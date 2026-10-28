@@ -1,0 +1,12 @@
+# 会话/工具产物
+.zcode/
+.video_agent/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 环境
+.env
+.env.*
