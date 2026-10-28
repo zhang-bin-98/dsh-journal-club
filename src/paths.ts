@@ -21,16 +21,10 @@ export function resolveWorkspacePath(input: string, cwd = process.cwd()): string
   return isAbsolute(input) ? input : resolve(cwd, input)
 }
 
-/** 文件名主干清理；保底防空串。调用方需要自行处理碰撞（见 stableStem）。 */
-export function sanitizeStem(input: string, fallback: string): string {
-  const stem = basename(input).replace(/\.[^.]+$/u, '').replace(/[^\w.-]+/gu, '_')
-  return stem === '' ? fallback : stem
-}
-
 /** 给清洗后的文件名追加稳定短标识，避免不同源文件名称碰撞。 */
 export function stableStem(input: string, fallback: string): string {
   const raw = basename(input).replace(/\.[^.]+$/u, '')
-  const stem = sanitizeStem(input, fallback)
+  const stem = raw.replace(/[^\w.-]+/gu, '_') || fallback
   if (raw === stem) return stem
   let hash = 2166136261
   for (const char of input) {

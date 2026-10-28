@@ -1,10 +1,9 @@
-import { mkdir, open, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, rm } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import { atomicWriteFile } from '../files.ts'
 import {
-  FiguresJsonSchema,
   FiguresJsonFormatError,
-  loadFiguresJson,
   parseFiguresJson,
   validateFiguresJson,
   type FiguresJson,
@@ -141,25 +140,6 @@ function resolveParent(root: unknown, tokens: string[], allowEnd: boolean): Pare
     assertSafeObjectKey(token)
   }
   return { parent: current, token }
-}
-
-function hasPath(root: unknown, tokens: string[]): boolean {
-  if (tokens.length === 0) return root !== undefined
-  let current = root
-  for (const token of tokens) {
-    if (isArray(current)) {
-      if (token === '-') return false
-      const index = parseArrayIndex(token, false, current.length)
-      current = current[index]
-    } else if (isObject(current)) {
-      assertSafeObjectKey(token)
-      if (!Object.prototype.hasOwnProperty.call(current, token)) return false
-      current = current[token]
-    } else {
-      return false
-    }
-  }
-  return true
 }
 
 function getPath(root: unknown, tokens: string[]): unknown {
@@ -318,17 +298,6 @@ function validatePatchShape(patch: readonly JsonPatchOperation[]): void {
   }
 }
 
-async function atomicWrite(path: string, body: string): Promise<void> {
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}-${++snapshotSequence}`
-  try {
-    await writeFile(temp, body, 'utf8')
-    await rename(temp, path)
-  } catch (error) {
-    await rm(temp, { force: true }).catch(() => {})
-    throw error
-  }
-}
-
 async function acquireLock(lockPath: string, timeoutMs: number, retryMs: number, signal?: AbortSignal): Promise<FileHandle> {
   const started = Date.now()
   for (;;) {
@@ -371,7 +340,7 @@ async function writeSnapshot(absPath: string, raw: string, revision: number): Pr
   await mkdir(historyDir, { recursive: true })
   const snapshotName = `${basename(absPath)}.rev-${String(revision).padStart(12, '0')}-${Date.now()}-${process.pid}-${++snapshotSequence}.json`
   const snapshotPath = join(historyDir, snapshotName)
-  await atomicWrite(snapshotPath, raw)
+  await atomicWriteFile(snapshotPath, raw)
   return snapshotPath
 }
 
@@ -430,8 +399,7 @@ export class FiguresStore {
       try {
         throwIfAborted(options.signal)
         const raw = await readFile(canonicalPath, 'utf8')
-        const current = loadFiguresFromRaw(raw, canonicalPath)
-        validateFiguresJson(current)
+        const current = parseFiguresJson(raw, canonicalPath)
         if (current.revision !== baseRev) {
           return { ok: false, conflict: true, revision: current.revision, current }
         }
@@ -441,13 +409,13 @@ export class FiguresStore {
         if (parsed.revision !== current.revision) {
           throw new FiguresPatchError('revision 由服务统一递增，patch 不得直接修改 revision')
         }
-        const next = FiguresJsonSchema.parse({ ...parsed, revision: current.revision + 1 })
+        const next = { ...parsed, revision: current.revision + 1 }
         validateFiguresJson(next)
         throwIfAborted(options.signal)
 
         const historyPath = await writeSnapshot(canonicalPath, raw, current.revision)
         try {
-          await atomicWrite(canonicalPath, `${JSON.stringify(next, null, 2)}\n`)
+          await atomicWriteFile(canonicalPath, `${JSON.stringify(next, null, 2)}\n`)
         } catch (error) {
           await rm(historyPath, { force: true }).catch(() => {})
           throw error

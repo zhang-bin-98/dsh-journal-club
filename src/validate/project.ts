@@ -97,7 +97,6 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
 
   const panels = new Map<string, Panel>()
   const panelAssets = new Map<string, string>()
-  const figureLabels = new Map<string, string>()
   if (figures) {
     const documents = new Set<string>()
     for (const document of figures.documents) {
@@ -108,7 +107,6 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
     for (const figure of figures.figures) {
       if (figureIds.has(figure.id)) errors.push(issue('DUPLICATE_FIGURE_ID', `重复 figure id：${figure.id}`, { path: 'figures.json' }))
       figureIds.add(figure.id)
-      figureLabels.set(figure.id, figure.label ?? figure.id)
       const regions = figure.regions
       for (const region of regions) {
         const document = figures.documents.find(item => item.id === region.document)
@@ -165,7 +163,7 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
     const declaredRevision = Number(deck.frontmatter.figures_revision)
     if (Number.isInteger(declaredRevision) && currentRevision !== undefined && declaredRevision !== currentRevision) warnings.push(issue('FIGURES_REVISION_STALE', `deck 使用旧 figures revision：${declaredRevision}，当前为 ${currentRevision}`, { path: 'deck.md' }))
     const referencedPanels = new Set<string>()
-    const referencedGroups = new Set<string>()
+    const groupDigestCache = new Map<string, Promise<string>>()
     for (const page of deck.pages) {
       if (page.declaredPage === undefined) errors.push(issue('PAGE_HEADER_MISSING', `第 ${page.index} 页缺少 page 注释`, { path: 'deck.md', page: page.index }))
       else if (page.declaredPage !== page.index) errors.push(issue('PAGE_NUMBER_MISMATCH', `页号 ${page.declaredPage} 与顺序 ${page.index} 不一致`, { path: 'deck.md', page: page.index }))
@@ -175,7 +173,6 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
         if (!image.sourceLine || !isSourceLineValid(image.sourceLine)) errors.push(issue('SOURCE_INVALID', `图片来源标注缺失或格式非法：${image.path}`, { path: 'deck.md', page: page.index }))
         if (asset.startsWith('groups/')) {
           const groupId = asset.slice('groups/'.length).replace(/\.png$/u, '')
-          referencedGroups.add(groupId)
           const group = groups?.groups.find(item => item.id === groupId)
           if (!group) errors.push(issue('GROUP_MISSING', `引用的图组不存在：${groupId}`, { path: 'deck.md', page: page.index, group: groupId }))
           else {
@@ -187,7 +184,12 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
               if (!panels.has(member)) errors.push(issue('GROUP_MEMBER_MISSING', `图组成员不存在：${member}`, { path: 'groups.json', page: page.index, group: groupId, panel: member }))
             }
             if (figures) {
-              const digest = await digestAssets(absProject, group.members, panels)
+              let digestPromise = groupDigestCache.get(groupId)
+              if (!digestPromise) {
+                digestPromise = digestAssets(absProject, group.members, panels)
+                groupDigestCache.set(groupId, digestPromise)
+              }
+              const digest = await digestPromise
               const suppliedDigest = group.inputs_digest.replace(/^sha256:/u, '')
               if (digest !== suppliedDigest) {
                 warnings.push(issue('GROUP_DIGEST_STALE', `图组成员资产已变化，需要重建：${groupId}`, { path: 'groups.json', page: page.index, group: groupId }))
@@ -214,7 +216,6 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
       }
     }
     for (const id of panels.keys()) if (!referencedPanels.has(id)) warnings.push(issue('PANEL_UNREFERENCED', `panel 未被 deck 引用：${id}`, { path: 'figures.json', panel: id }))
-    void referencedGroups
   }
   if (outlineText !== undefined) {
     const outlineRevision = outlineText.match(/figures_revision\s*:\s*(\d+)/iu)?.[1]
