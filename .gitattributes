@@ -1,0 +1,6 @@
+# 二进制产物不做任何换行/编码转换（Windows autocrlf 之下保护 PDF/PNG）
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
