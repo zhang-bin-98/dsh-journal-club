@@ -114,7 +114,23 @@ M1（渲染底座）实施中的四项关键事实，均已回写架构文档相
 直接写入 figures.json（三篇叠加证明必然错位）；为 client 空壳引入 monorepo
 预设副本（违反零依赖原则）。
 
+## D15 M2 图源写入与校验实现默认值（2026-10-28）
+
+M2 将 v3.1 的数据完整性契约落为可回归的 Node 实现，默认细节固定如下：
+
+1. **JSON Patch 采用 RFC 6902 风格六操作**：`add`、`remove`、`replace`、`move`、`copy`、`test`；JSON Pointer 支持 `~0`/`~1`，拒绝危险对象键、非法数组索引和未知操作。`revision` 是服务维护字段，非 `test` patch 不得直接修改。
+2. **乐观锁与并发**：`base_rev` 必须是非负整数；写入时在独占 `.lock` 下重新读取当前文件并比较 revision，进程内同一路径再串行排队。匹配才应用 patch；冲突返回结构化结果，不改主文件、不生成快照。
+3. **快照**：成功替换前写入项目 `.history/`，保存旧 figures.json；默认保留最近 10 份，超出滚动清理。主文件采用临时文件完整写入后 rename；快照或主文件写失败均不推进 revision。
+4. **跨字段校验**：写入前除基础 schema 外检查 document/figure/panel ID 唯一、region/document/page 引用、region_index、caption_refs、asset 身份与有限非退化 bbox。crop 的 asset 回写也通过该唯一写入服务，避免第二套写入口。
+5. **validate 分层**：程序只报告确定性 `errors`/`warnings`；deck 页头、页号、来源、图片身份、图组成员、讲稿缺失属于 error；旧 figures revision、图组 digest 失配、Panel 未引用、图文讲稿不对应属于 warning；outline 只检查存在与 revision，不把发现覆盖和叙事质量伪装成程序判定。
+6. **M1 安全收口**：工具相对路径按 dsh session cwd 解析；panel ID 拒绝路径穿越和 Windows 保留名；PNG 原子替换；PDF 缓存按 size/mtime/ctime 失效；render_pages 对清洗后可能碰撞的源文件名追加稳定短标识。
+
+M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均通过；真实 dsh 安装加载仍待宿主环境验收。
+
+被否：仅依靠 `figuresJson` 的原子 rename（缺少 CAS/快照/patch 回滚）；让 crop 直接保存 figures.json（会绕过唯一写入通道）；由 validate 判断发现覆盖或科学因果表达（超出可判定契约）。
+
 ## 修订记录
 
 - 2026-10-26：初版（D1–D13）。
 - 2026-10-28：D14（M1 实测结论与实施偏差）。
+- 2026-10-28：D15（M2 图源写入与校验实现默认值）。

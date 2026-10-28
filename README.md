@@ -2,7 +2,7 @@
 
 运行在 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) 内的生物医学论文 **Journal Club 汇报插件**：研究者上传论文 PDF，由 agent 完成解析、图源切分、叙事大纲与幻灯片分页，交付可转 PPTX 的 markdown 版幻灯片（含讲稿与图组）。
 
-> **状态：实施中（M1 渲染底座已完成，feat/m1 分支）。** 设计文档见 [docs](docs/README.md)；路线图 M1–M6 见 [架构设计](docs/architecture/架构设计.md) §7；M1 验收证据见 [docs/verification](docs/verification/m1-mineru-overlay/README.md)。
+> **状态：实施中（M1 渲染底座与 M2 图源写入/校验已完成，feat/m2 分支）。** 设计文档见 [docs](docs/README.md)；路线图 M1–M6 见 [架构设计](docs/architecture/架构设计.md) §7；M1 验收证据见 [docs/verification](docs/verification/m1-mineru-overlay/README.md)。
 
 ## 开发
 
@@ -14,8 +14,8 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 ```
 
 安装到 dsh：`dsh plugin add <本仓库路径>`（bundle 声明与插件行见 `package.json` 的
-`dsh` 字段与 `cordis.patch.yml`）。已注册工具：`render_pages`（PDF 页 → PNG 底图）、
-`crop`（figures.json panel bbox → figures/<id>.png）。
+`dsh` 字段与 `cordis.patch.yml`）。已注册工具：`render_pages`（PDF 页 → PNG 底图）、`crop`（figures.json panel bbox → figures/<id>.png）、
+`update_figures`（RFC 6902 patch + base_rev CAS + .history 快照）、`validate`（figures/groups/deck 一致性校验）。
 
 ## 核心闭环
 

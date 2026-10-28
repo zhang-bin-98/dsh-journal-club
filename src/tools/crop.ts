@@ -1,18 +1,18 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rename, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
   loadFiguresJson,
-  saveFiguresJson,
   type DocumentEntry,
   type Figure,
   type Panel,
 } from '../figures/figuresJson.ts'
+import { updateFiguresFile } from '../figures/figuresStore.ts'
+import { atomicWriteFile } from '../files.ts'
 import { PdfFile } from '../pdf/pdf.ts'
-import { isEmptyBBox } from '../pdf/coords.ts'
-import { resolveWorkspacePath } from '../paths.ts'
-import { displayPath } from './renderPages.ts'
+import { hasIntersection } from '../pdf/coords.ts'
+import { assertInsideDirectory, assertSafeAssetId, resolveWorkspacePath, workspaceCwd, displayWorkspacePath } from '../paths.ts'
 
 /**
  * crop：按 figures.json 的 panel bbox 裁剪 viewport 渲染 → figures/<panel_id>.png
@@ -32,9 +32,17 @@ interface CroppedEntry {
   clamped: boolean
 }
 
+interface StagedAsset {
+  id: string
+  figureIndex: number
+  panelIndex: number
+  tempPath: string
+  outPath: string
+}
+
 interface Anomaly {
   id: string
-  kind: 'unknown-id' | 'duplicate-id' | 'invalid-region-index' | 'empty-bbox' | 'document-missing' | 'render-failed'
+  kind: 'unknown-id' | 'duplicate-id' | 'invalid-region-index' | 'empty-bbox' | 'bbox-outside-page' | 'document-missing' | 'render-failed'
   detail?: string
 }
 
@@ -79,6 +87,7 @@ export function registerCrop(ctx: Context): void {
                   id: { type: 'string' },
                   figure: { type: 'string' },
                   label: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+                  document: { type: 'string' },
                   page: { type: 'integer' },
                   asset: { type: 'string' },
                   width: { type: 'integer' },
@@ -122,8 +131,9 @@ export function registerCrop(ctx: Context): void {
         ],
       },
       async execute(args, exec) {
+        const cwd = workspaceCwd(exec)
         const dpi = args.dpi ?? 300
-        const absFigures = resolveWorkspacePath(args.figures_json)
+        const absFigures = resolveWorkspacePath(args.figures_json, cwd)
         const data = await loadFiguresJson(absFigures)
         const projectDir = dirname(absFigures)
         const figuresDir = join(projectDir, 'figures')
@@ -166,8 +176,15 @@ export function registerCrop(ctx: Context): void {
 
         const docFiles = new Map<string, { path: string; file?: PdfFile; missing?: string }>()
         const cropped: CroppedEntry[] = []
+        const staged: StagedAsset[] = []
         for (const { figure, panel } of selected) {
           if ((idCounts.get(panel.id) ?? 0) > 1) continue
+          try {
+            assertSafeAssetId(panel.id)
+          } catch (error) {
+            anomalies.push({ id: panel.id, kind: 'render-failed', detail: (error as Error).message })
+            continue
+          }
           const region = figure.regions[panel.region_index]
           if (region === undefined) {
             anomalies.push({ id: panel.id, kind: 'invalid-region-index', detail: `region_index=${panel.region_index}` })
@@ -193,23 +210,35 @@ export function registerCrop(ctx: Context): void {
             anomalies.push({ id: panel.id, kind: 'document-missing', detail: cached.missing })
             continue
           }
-          if (isEmptyBBox(panel.bbox)) {
+          if (panel.bbox[2] <= panel.bbox[0] || panel.bbox[3] <= panel.bbox[1]) {
             anomalies.push({ id: panel.id, kind: 'empty-bbox', detail: `bbox=${panel.bbox.join(',')}` })
+            continue
+          }
+          const size = await cached.file.pageSize(region.page)
+          if (!hasIntersection(panel.bbox, size.width, size.height)) {
+            anomalies.push({ id: panel.id, kind: 'bbox-outside-page', detail: `bbox=${panel.bbox.join(',')}` })
             continue
           }
           try {
             const png = await cached.file.renderRegion(region.page, panel.bbox, dpi, exec.signal)
             const outPath = join(figuresDir, `${panel.id}.png`)
-            await mkdir(figuresDir, { recursive: true })
-            await writeFile(outPath, png.data)
-            panel.asset = `figures/${panel.id}.png`
+            assertInsideDirectory(outPath, figuresDir)
+            const tempPath = `${outPath}.crop-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`
+            await atomicWriteFile(tempPath, png.data)
+            staged.push({
+              id: panel.id,
+              figureIndex: data.figures.findIndex(item => item.id === figure.id),
+              panelIndex: figure.panels.findIndex(item => item.id === panel.id),
+              tempPath,
+              outPath,
+            })
             cropped.push({
               id: panel.id,
               figure: figure.id,
               label: panel.label,
               document: region.document,
               page: region.page,
-              asset: displayPath(outPath),
+              asset: displayWorkspacePath(outPath, cwd),
               width: png.width,
               height: png.height,
               clamped: png.clamped,
@@ -221,12 +250,34 @@ export function registerCrop(ctx: Context): void {
         }
 
         let revision = data.revision
-        if (cropped.length > 0) {
-          revision = data.revision + 1
-          await saveFiguresJson(absFigures, { ...data, revision })
+        if (cropped.length > 0 && anomalies.length === 0) {
+          for (const item of cropped) {
+            const stagedItem = staged.find(candidate => candidate.id === item.id)
+            if (!stagedItem) throw new Error(`crop 暂存文件丢失：${item.id}`)
+            const panel = data.figures[stagedItem.figureIndex]?.panels[stagedItem.panelIndex]
+            if (!panel) throw new Error(`crop panel 索引失效：${item.id}`)
+            const previousAsset = panel.asset
+            const path = `/figures/${stagedItem.figureIndex}/panels/${stagedItem.panelIndex}/asset`
+            const patch = [{ op: previousAsset === undefined ? 'add' as const : 'replace' as const, path, value: `figures/${item.id}.png` }]
+            const updated = await updateFiguresFile(absFigures, patch, revision, { signal: exec.signal })
+            if (!updated.ok) throw new Error(`crop 写入冲突：当前 revision=${updated.revision}`)
+            revision = updated.revision
+            try {
+              await rename(stagedItem.tempPath, stagedItem.outPath)
+            } catch (error) {
+              const rollback = previousAsset === undefined
+                ? [{ op: 'remove' as const, path }]
+                : [{ op: 'replace' as const, path, value: previousAsset }]
+              await updateFiguresFile(absFigures, rollback, revision, { signal: exec.signal }).catch(() => undefined)
+              throw error
+            }
+            staged.splice(staged.indexOf(stagedItem), 1)
+            panel.asset = `figures/${item.id}.png`
+          }
         }
+        await Promise.all(staged.map(item => rm(item.tempPath, { force: true }).catch(() => {})))
         return {
-          figures_json: displayPath(absFigures),
+          figures_json: displayWorkspacePath(absFigures, cwd),
           revision,
           cropped,
           anomalies,

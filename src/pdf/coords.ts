@@ -22,7 +22,11 @@ export function clampBBox(bbox: BBox, pageWidth: number, pageHeight: number): Cl
   return { bbox: [x0, y0, x1, y1], clamped }
 }
 
-/** 宽或高 ≤ minimum（pt）视为空框。 */
-export function isEmptyBBox(bbox: BBox, minimum = 1): boolean {
-  return bbox[2] - bbox[0] < minimum || bbox[3] - bbox[1] < minimum
+/** 判断 bbox 与页面的交集是否有最小有效面积。 */
+export function hasIntersection(bbox: BBox, pageWidth: number, pageHeight: number, minimum = 1): boolean {
+  const x0 = Math.max(0, bbox[0])
+  const y0 = Math.max(0, bbox[1])
+  const x1 = Math.min(pageWidth, bbox[2])
+  const y1 = Math.min(pageHeight, bbox[3])
+  return x1 - x0 >= minimum && y1 - y0 >= minimum
 }

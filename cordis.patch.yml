@@ -1,5 +1,4 @@
-# dsh-journal-club bundle 层：host 半边注册 5 个原子工具（render_pages / crop /
-# compose_panels / update_figures / validate，M1 先落前两个）；client 半边由
+# M2 已注册：render_pages / crop / update_figures / validate。
 # package.json 的 dsh.client 声明 + ./client 导出提供（M1 为空壳，M4 落 JC tab）。
 - insert:
   - id: journal-club

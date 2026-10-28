@@ -1,6 +1,6 @@
 # 文档索引
 
-> dsh-journal-club 的全部权威文档入口。当前阶段：实施中（M1 渲染底座完成，见 [决策记录 D14](decisions.md) 与 [M1 验收证据](verification/m1-mineru-overlay/README.md)）。
+> dsh-journal-club 的全部权威文档入口。当前阶段：实施中（M1 渲染底座与 M2 图源写入/校验完成，见 [决策记录 D14/D15](decisions.md) 与 [M1 验收证据](verification/m1-mineru-overlay/README.md)）。
 
 ## 阅读顺序
 

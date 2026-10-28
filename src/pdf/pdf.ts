@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import { dirname, sep } from 'node:path'
+import { stat } from 'node:fs/promises'
 import { createCanvas, type Canvas } from '@napi-rs/canvas'
 import {
   getDocument,
@@ -71,6 +72,7 @@ export interface PngImage {
 interface OpenEntry {
   file?: PdfFile
   promise: Promise<PdfFile>
+  version?: string
 }
 
 /** 已打开文档缓存：按绝对路径共享，LRU 上限 4 份（主论文 + 补充材料场景足够）。 */
@@ -96,6 +98,10 @@ export class PdfError extends Error {
   }
 }
 
+function fileVersion(absPath: string): Promise<string> {
+  return stat(absPath).then(info => `${info.size}:${info.mtimeMs}:${info.ctimeMs}`)
+}
+
 export class PdfFile {
   private readonly doc: PDFDocumentProxy
 
@@ -108,11 +114,14 @@ export class PdfFile {
   }
 
   static async open(absPath: string, signal?: AbortSignal): Promise<PdfFile> {
+    const version = await fileVersion(absPath)
     const cached = openDocs.get(absPath)
-    if (cached) {
+    if (cached && cached.version === version) {
       touch(absPath, cached)
       return cached.promise
     }
+    if (cached?.file) await cached.file.destroy()
+    openDocs.delete(absPath)
     const promise = (async () => {
       await ensureFakeWorker()
       const { readFile } = await import('node:fs/promises')
@@ -138,7 +147,7 @@ export class PdfFile {
         signal?.removeEventListener('abort', onAbort)
       }
     })()
-    const entry: OpenEntry = { promise }
+    const entry: OpenEntry = { promise, version }
     promise.then(
       file => {
         entry.file = file

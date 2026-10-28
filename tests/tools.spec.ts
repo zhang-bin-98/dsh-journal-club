@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import { registerCrop } from '../src/tools/crop.ts'
 import { registerRenderPages } from '../src/tools/renderPages.ts'
 import { FIXTURES, fixturePath } from './fixtures.ts'
@@ -124,15 +125,18 @@ describe('crop 工具', () => {
 
     const { ctx, defs } = captureTools()
     registerCrop(ctx)
-    const result = (await defs.get('crop')!.execute({ figures_json: 'paper-b/figures.json' }, runCtx())) as {
+    const result = await defs.get('crop')!.execute({ figures_json: 'paper-b/figures.json' }, runCtx())
+    const outputErrors = validateJsonSchemaValue(defs.get('crop')!.output.schema, result)
+    expect(outputErrors).toEqual([])
+    const typedResult = result as {
       revision: number
       cropped: Array<{ id: string; asset: string; width: number; height: number; clamped: boolean }>
       anomalies: unknown[]
     }
     // 默认只裁已采纳：fig2 被 excluded 跳过。
-    expect(result.cropped.map(c => c.id)).toEqual(['fig1_A'])
-    expect(result.revision).toBe(5)
-    expect(result.anomalies).toEqual([])
+    expect(typedResult.cropped.map(c => c.id)).toEqual(['fig1_A'])
+    expect(typedResult.revision).toBe(5)
+    expect(typedResult.anomalies).toEqual([])
     const info = await stat(join(project, 'figures', 'fig1_A.png'))
     expect(info.size).toBeGreaterThan(5_000)
     // figures.json 回写：asset 字段 + revision 5。
@@ -169,7 +173,22 @@ describe('crop 工具', () => {
       runCtx(),
     )) as { cropped: Array<{ id: string }>; anomalies: Array<{ id: string; kind: string }> }
     expect(result.cropped.map(c => c.id)).toEqual(['fig1_A'])
-    expect(result.anomalies.map(a => a.kind).sort()).toEqual(['empty-bbox', 'invalid-region-index', 'unknown-id'])
+    expect(result.anomalies.map(a => a.kind).sort()).toEqual(['bbox-outside-page', 'invalid-region-index', 'unknown-id'])
+  })
+
+  it('拒绝非法 panel id 且不创建 figures 目录外文件', async () => {
+    const { project } = await prepareProject()
+    const figuresPath = join(project, 'figures.json')
+    await writeFile(figuresPath, JSON.stringify({
+      version: 1,
+      documents: [{ id: 'main', path: 'main.pdf', role: 'main', pages: 30 }],
+      figures: [{ id: 'fig1', status: 'pending', regions: [{ document: 'main', page: 1, bbox: [0, 0, 612, 792] }], panels: [{ id: '../escape', label: 'A', region_index: 0, bbox: [20, 20, 200, 200], caption_refs: [], flags: [], origin: 'auto' }] }],
+    }), 'utf8')
+    const { ctx, defs } = captureTools()
+    registerCrop(ctx)
+    const result = await defs.get('crop')!.execute({ figures_json: 'paper-b/figures.json' }, runCtx()) as { anomalies: Array<{ kind: string; detail?: string }> }
+    expect(result.anomalies.some(item => item.detail?.includes('非法 panel id'))).toBe(true)
+    expect(await stat(join(project, 'escape.png')).catch(() => undefined)).toBeUndefined()
   })
 
   it('契约不合法的 figures.json 报校验错误', async () => {

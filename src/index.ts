@@ -1,6 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { registerCrop } from './tools/crop.ts'
 import { registerRenderPages } from './tools/renderPages.ts'
+import { registerUpdateFigures } from './tools/updateFigures.ts'
+import { registerValidate } from './tools/validate.ts'
 
 /**
  * dsh-journal-club host 入口（架构 §2）。
@@ -13,4 +15,6 @@ export const inject = ['tools']
 export function apply(ctx: Context): void {
   registerRenderPages(ctx)
   registerCrop(ctx)
+  registerUpdateFigures(ctx)
+  registerValidate(ctx)
 }

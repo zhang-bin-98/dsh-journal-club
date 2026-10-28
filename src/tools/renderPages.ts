@@ -1,9 +1,10 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, sep } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { atomicWriteFile } from '../files.ts'
 import { PdfFile } from '../pdf/pdf.ts'
-import { pageSuffix, resolveWorkspacePath, sanitizeStem } from '../paths.ts'
+import { pageSuffix, resolveWorkspacePath, stableStem, workspaceCwd, displayWorkspacePath } from '../paths.ts'
 
 /**
  * render_pages：PDF 页 → PNG 底图（架构 §3）。
@@ -72,29 +73,30 @@ export function registerRenderPages(ctx: Context): void {
         ],
       },
       async execute(args, exec) {
+        const cwd = workspaceCwd(exec)
         const dpi = args.dpi ?? 150
-        const abs = resolveWorkspacePath(args.path)
+        const abs = resolveWorkspacePath(args.path, cwd)
         if (args.pages.length === 0) throw new Error('pages 不能为空')
         const file = await PdfFile.open(abs, exec.signal)
         const invalid = [...new Set(args.pages)].filter(p => p < 1 || p > file.numPages)
         if (invalid.length > 0) {
           throw new Error(`页码越界：${invalid.join(', ')}（共 ${file.numPages} 页）`)
         }
-        const stem = sanitizeStem(abs, 'doc')
+        const stem = stableStem(abs, 'doc')
         const outputDir = join(dirname(abs), 'pages')
         await mkdir(outputDir, { recursive: true })
         const rendered: Array<{ page: number; path: string; width: number; height: number }> = []
         for (const page of [...new Set(args.pages)].sort((a, b) => a - b)) {
           const png = await file.renderPage(page, dpi, exec.signal)
           const outPath = join(outputDir, `${stem}-${pageSuffix(page)}.png`)
-          await writeFile(outPath, png.data)
-          rendered.push({ page, path: displayPath(outPath), width: png.width, height: png.height })
+          await atomicWriteFile(outPath, png.data)
+          rendered.push({ page, path: displayWorkspacePath(outPath, cwd), width: png.width, height: png.height })
         }
         return {
-          pdf: displayPath(abs),
+          pdf: displayWorkspacePath(abs, cwd),
           num_pages: file.numPages,
           dpi,
-          output_dir: displayPath(outputDir),
+          output_dir: displayWorkspacePath(outputDir, cwd),
           rendered,
         }
       },
@@ -102,8 +104,7 @@ export function registerRenderPages(ctx: Context): void {
   )
 }
 
-/** 会话工作目录内的路径显示为相对形式（posix 分隔符），否则原样。 */
+/** 兼容旧调用方：相对当前进程目录显示路径。 */
 export function displayPath(absPath: string): string {
-  const rel = relative(process.cwd(), absPath)
-  return rel === '' || rel.startsWith('..') ? absPath.split(sep).join('/') : rel.split(sep).join('/')
+  return displayWorkspacePath(absPath)
 }
