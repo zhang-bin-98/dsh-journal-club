@@ -1,6 +1,6 @@
 # 文档索引
 
-> dsh-journal-club 的全部权威文档入口。当前阶段：设计完成（v3.1 已评审修订），实施未开始。
+> dsh-journal-club 的全部权威文档入口。当前阶段：实施中（M1 渲染底座完成，见 [决策记录 D14](decisions.md) 与 [M1 验收证据](verification/m1-mineru-overlay/README.md)）。
 
 ## 阅读顺序
 
@@ -28,8 +28,10 @@ docs/
 │   ├── 图源核对.md             确认点 1 的交互细化（右侧栏工作台）
 │   ├── deck格式.md             deck.md 契约 + PPTX 生态对接路径
 │   └── 对话入口.md             触发分流 / 恢复 / jc.md 状态与确认记录
-└── architecture/
-    └── 架构设计.md             选型、包结构、5 工具契约、数据契约（figures.json / groups.json / manifest）、M1–M6
+├── architecture/
+│   └── 架构设计.md             选型、包结构、5 工具契约、数据契约（figures.json / groups.json / manifest）、M1–M6
+└── verification/
+    └── m1-mineru-overlay/       M1 验收证据：MinerU bbox 叠加对齐图（2026-10-28）
 ```
 
 ## 术语速查

@@ -85,6 +85,36 @@
 6. 旧工具链残留清理（对话入口/图源核对/架构三处）。
 7. **校验分层**——程序管可判定项（讲稿缺失=error 阻断渲染）；发现覆盖归 agent 语义自查（自由文本无发现 ID，不做程序承诺）。
 
+## D14 M1 实测结论与实施偏差（2026-10-28）
+
+M1（渲染底座）实施中的四项关键事实，均已回写架构文档相应段落：
+
+1. **dsh 工具参数 DSL 取代 zod schema**：架构 v3 写「defineTool schema（zod）」；
+   实际 dsh-tools 的 `defineTool` 使用自有参数 DSL（`{ type, required, enum… }`）
+   与 canonical output schema，zod 降级为内部数据契约校验（figures.json）。
+   工具实现契约（注册即 effect、output.render、exec.signal）按官方文档与
+   dsh-tools 0.2.2-alpha.2 实测编写。
+2. **pdfjs-dist v6 Node 官方配对即 @napi-rs/canvas**：`NodeCanvasFactory` 直接
+   require @napi-rs/canvas（无需自建 canvas 工厂）；Node 无 Worker 环境须设
+   `globalThis.pdfjsWorker` 走主线程 fake worker；`render({canvas, viewport,
+   transform})` 的 transform 先于 viewport.transform 进入 CTM（画布空间平移），
+   SmartJC 裁剪数学原样成立（crop=整页切片一致性回归固化）。
+3. **MinerU bbox 坐标基准 = 两轴各自 0–1000 归一化**（非 PDF pt、非统一像素栅格）：
+   `pt = norm/1000 × 旋转后页面尺寸`；三篇真实论文叠加目视验证（证据：
+   [docs/verification/m1-mineru-overlay](verification/m1-mineru-overlay/README.md)）。
+   个别复杂大图整图框偏小属检测质量问题，由 agent 视觉切分兜底。json=content-list、
+   images/ 随包落盘，架构 §8 两项「M1 首项实测」风险关闭。
+4. **client bundle 按 dsh client-modules 工厂契约手工产出**：共享 tsdown 预设
+   是 harness monorepo 内部文件，外部插件不可引；按 `window.__ModuleLoader__
+   .load({id, factory})` 闭包格式 + 平台基线 externals 自建 `tsdown.client.ts`
+   （空壳产物已冒烟验证 factory 执行）。M4 工作台如需 CSS Modules/assets 再按
+   同一契约扩展。
+
+被否：自建 canvas 工厂适配层（pdfjs v6 原生支持）；把 0–1000 归一化当成 pt
+直接写入 figures.json（三篇叠加证明必然错位）；为 client 空壳引入 monorepo
+预设副本（违反零依赖原则）。
+
 ## 修订记录
 
 - 2026-10-26：初版（D1–D13）。
+- 2026-10-28：D14（M1 实测结论与实施偏差）。

@@ -2,7 +2,20 @@
 
 运行在 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) 内的生物医学论文 **Journal Club 汇报插件**：研究者上传论文 PDF，由 agent 完成解析、图源切分、叙事大纲与幻灯片分页，交付可转 PPTX 的 markdown 版幻灯片（含讲稿与图组）。
 
-> **状态：设计阶段（v3.1，已评审修订），尚未开始实施。** 设计文档见 [docs](docs/README.md)；路线图 M1–M6 见 [架构设计](docs/architecture/架构设计.md) §7。
+> **状态：实施中（M1 渲染底座已完成，feat/m1 分支）。** 设计文档见 [docs](docs/README.md)；路线图 M1–M6 见 [架构设计](docs/architecture/架构设计.md) §7；M1 验收证据见 [docs/verification](docs/verification/m1-mineru-overlay/README.md)。
+
+## 开发
+
+```sh
+npm install        # 安装依赖（Node ≥ 22.13）
+npm run typecheck  # 类型检查
+npm test           # vitest 固定 fixture 回归（3 篇真实论文 + 旋转页资产 + MinerU 真实解析产物）
+npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，dsh client-modules 工厂格式）
+```
+
+安装到 dsh：`dsh plugin add <本仓库路径>`（bundle 声明与插件行见 `package.json` 的
+`dsh` 字段与 `cordis.patch.yml`）。已注册工具：`render_pages`（PDF 页 → PNG 底图）、
+`crop`（figures.json panel bbox → figures/<id>.png）。
 
 ## 核心闭环
 
