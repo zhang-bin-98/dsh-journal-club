@@ -113,31 +113,34 @@ export function JournalClubTab(props: SidebarTabBodyProps & { readonly remote: W
   )
 }
 
+/** Host services this client needs; the loader activates `apply` only once all are present. */
+export const inject = ['slots', 'sidebarRightTabs', 'remote', 'remote.workspaceFiles']
+
 export function apply(ctx: Context): void {
   ensureStyles()
-  ctx.inject(['slots', 'sidebarRightTabs', 'remote'], () => {
-    const active = ctx as ClientContext
-    if (active.slots === undefined || active.sidebarRightTabs === undefined || active.remote === undefined) return
-    const tabs = active.sidebarRightTabs
-    const slots = active.slots
-    const remote = active.remote
-    ctx.effect(() => tabs.register({
-      id: TAB_ID,
-      kind: TAB_KIND,
-      keepMounted: false,
+  const active = ctx as ClientContext
+  const tabs = active.sidebarRightTabs
+  const slots = active.slots
+  const remote = active.remote
+  if (tabs === undefined || slots === undefined || remote === undefined) {
+    throw new Error('dsh-journal-club: sidebarRightTabs / slots / remote 服务不可用')
+  }
+  ctx.effect(() => tabs.register({
+    id: TAB_ID,
+    kind: TAB_KIND,
+    keepMounted: false,
+    title: () => 'Journal Club',
+    guide: [{
+      id: GUIDE_ID,
+      order: 80,
       title: () => 'Journal Club',
-      guide: [{
-        id: GUIDE_ID,
-        order: 80,
-        title: () => 'Journal Club',
-        description: () => '论文图源、确认点与项目状态',
-      }],
-    }))
-    ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register(
-      { name: 'sidebar.right.pane.tab', key: TAB_ID },
-      props => createElement(JournalClubTab, { ...props, remote }),
-    )))
-  })
+      description: () => '论文图源、确认点与项目状态',
+    }],
+  }), 'journal-club: tab type')
+  ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register(
+    { name: 'sidebar.right.pane.tab', key: TAB_ID },
+    props => createElement(JournalClubTab, { ...props, remote }),
+  )), 'journal-club: tab body')
 }
 
 function createWorkspaceFiles(remote: WorkspaceRemote): WorkspaceFilesPort {

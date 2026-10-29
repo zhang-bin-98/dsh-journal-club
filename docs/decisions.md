@@ -69,7 +69,7 @@
 
 ## D12 UI 零新增依赖
 
-- **决策**：React 由宿主提供（peer）；CSS Modules + `--dsh-alias-*` token + ui-primitives；不引状态库、不引 Tailwind。
+- **决策**：React 由宿主提供（peer）；`jc-` 前缀内联样式表 + `--dsh-alias-*` token + ui-primitives；不引状态库、不引 Tailwind（原定 CSS Modules，D18 实测后改为内联样式表）。
 - **理由**：dsh web-styling 明文禁止组件库与 Tailwind；明暗主题自动跟随零成本。
 - **被否**：搬 SmartJC 的 Tailwind 主题（违反宿主约定，已从复用清单更正）。
 
@@ -107,8 +107,8 @@ M1（渲染底座）实施中的四项关键事实，均已回写架构文档相
 4. **client bundle 按 dsh client-modules 工厂契约手工产出**：共享 tsdown 预设
    是 harness monorepo 内部文件，外部插件不可引；按 `window.__ModuleLoader__
    .load({id, factory})` 闭包格式 + 平台基线 externals 自建 `tsdown.client.ts`
-   （空壳产物已冒烟验证 factory 执行）。M4 工作台如需 CSS Modules/assets 再按
-   同一契约扩展。
+   （空壳产物已冒烟验证 factory 执行）。M4 工作台的样式按 D18 以内联样式表
+   进入同一工厂，不走 CSS 管线。
 
 被否：自建 canvas 工厂适配层（pdfjs v6 原生支持）；把 0–1000 归一化当成 pt
 直接写入 figures.json（三篇叠加证明必然错位）；为 client 空壳引入 monorepo
@@ -132,7 +132,7 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 ## D16 M3–M5 实施状态与验收边界（2026-10-29）
 
 - **M3 文件链实现**：新增 `src/skills/journal-club/SKILL.md` 与 `src/project/jcState.ts`，覆盖完整/局部/恢复分流、MinerU manifest 四条件缓存、三确认点、jc.md digest/revision 失效与恢复停点；单元测试覆盖状态读写/确认有效性。真实 dsh skill registry 挂载与三篇论文纯对话端到端尚未验收。
-- **M4 client 工作台实现**：新增 JC tab/store/workbench/CSS Modules，覆盖空态/状态卡/图源工作台、workspaceFiles read/watch、bbox 框与四角编辑、图注关联、裁切预览和冲突提示；写入只调用约定的 `remote.journalClub.updateFigures`。client bundle 与 store/geometry 测试通过，但**host 侧 `journalClub` RPC 服务尚未注册，真实 dsh/browser 页面交互未验证**，故不能宣称 M4 端到端完成。
+- **M4 client 工作台实现**：新增 JC tab/store/workbench/样式表，覆盖空态/状态卡/图源工作台、workspaceFiles read/watch、bbox 框与四角编辑、图注关联、裁切预览和冲突提示；写入只调用约定的 `remote.journalClub.updateFigures`。client bundle 与 store/geometry 测试通过，但**host 侧 `journalClub` RPC 服务尚未注册，真实 dsh/browser 页面交互未验证**，故不能宣称 M4 端到端完成。
 - **M5 compose 核心实现**：新增 `compose_panels`，支持 grid/rows/1+2、sharp 输出与 groups.json 成员/digest/几何登记；单测覆盖构图、缺失成员、重拼和输出契约。真实图片人工质量验收、与实际 dsh host 的加载尚未完成；PPTX 外部插件链仍未验证。
 - **阶段总验收未完成**：没有真实 dsh 安装运行、JC 工作台人工交互、三篇论文全链确认/恢复或 PPTX 导出证据。以上作为 M6/宿主集成验收项继续跟踪，不以 typecheck/build 通过代替。
 
@@ -144,8 +144,21 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **待宿主集成**：需要在 dsh profile/bundle 侧提供 Typert host/controller package face 与生成的 `./remote` contribution，再运行真实 Web/desktop session 验证读取、watch、CAS 写入和冲突 UI。当前 M4 只能标记为 client 实现已完成、真实写入链未验收。
 - 最终自动门禁（2026-10-29）：typecheck、host/client build、49/49 测试与 `npm pack --dry-run` 通过；浏览器交互、三篇论文从冷启动到 PPTX 的完整链未执行。
 
+## D18 桌面宿主实测：client 加载契约（2026-10-29）
+
+在本机 DeepSeek Harness 桌面版（runtime 0.2.1-rc.3）上以 `dsh plugin --profile desktop add <本仓库>` link 安装后实测，暴露并修复两项 client 契约问题：
+
+1. **工厂闭包内不能有 CSS import**：tsdown CSS 管线在工厂顶部产出 `import './style.css'`，渲染层报 `Cannot use import statement outside a module`，整个 web boot 失败（应用弹窗「1 entry did not activate」）。改为 `src/client/styles.ts`：`jc-` 前缀类名的样式字符串，`apply` 时注入一次 `<style>`，删除 `.module.css` 与 `@tsdown/css`。
+2. **服务依赖要在模块级导出 `inject`**：在 `apply` 内调 `ctx.inject([...], cb)` 时，回调没有触发，tab 不出现，也没有报错。宿主内置插件（sidebar-files 等）都是模块级 `export const inject = [...]`，由 loader 等服务就绪后再调 `apply`。改为同样写法（`slots`、`sidebarRightTabs`、`remote`、`remote.workspaceFiles`）后，右侧栏引导出现「Journal Club」入口，点开后空态正常渲染，console 无错误。
+
+- **已验证**：桌面版启动正常；插件出现在 boot entries；样式表已注入；JC tab 注册并渲染空态。
+- **未验证**：真实 jc.md 项目的状态卡与工作台、watch 刷新、`update_figures` 写入链（D17 的 host RPC 仍未接通）、三篇论文全链与 PPTX。headless profile 用不了桌面账号 provider（`ACCOUNT_SIGN_IN_REQUIRED`），所以 agent 侧工具/skill 的真实调用要在桌面版对话里验收。
+- 被否：保留 CSS Modules 再给工厂补 CSS loader（宿主没有公开这个契约）；在 `apply` 内轮询等服务（与宿主 loader 语义重复）。
+
 ## 修订记录
 
 - 2026-10-26：初版（D1–D13）。
 - 2026-10-28：D14（M1 实测结论与实施偏差）。
 - 2026-10-28：D15（M2 图源写入与校验实现默认值）。
+- 2026-10-29：D16、D17（M3–M5 实施状态，Remote 写入边界）。
+- 2026-10-29：D18（桌面宿主实测：client 加载契约），同步修订 D12/D14/D16 与架构 §1.3、§2、§5 的样式描述。
