@@ -1,6 +1,6 @@
 # 文档索引
 
-> dsh-journal-club 的全部权威文档入口。当前阶段：实施中（M1 渲染底座与 M2 图源写入/校验完成，见 [决策记录 D14/D15](decisions.md) 与 [M1 验收证据](verification/m1-mineru-overlay/README.md)）。
+> dsh-journal-club 权威文档入口。M1–M3 与 M5 核心实现完成，M4 client 工作台代码已实现；真实 dsh/browser/PPTX 与完整三篇论文端到端验收仍未完成，见 [架构设计 §7](architecture/架构设计.md) 和 [决策记录 D16](decisions.md)。
 
 ## 阅读顺序
 

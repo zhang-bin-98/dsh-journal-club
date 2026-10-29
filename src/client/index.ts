@@ -1,13 +1,13 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { apply as applyJournalClub } from './jcTab.ts'
 
 /**
- * client 半边空壳（M1）。构建产物为 dsh client-modules 的闭包工厂格式
- * （见 tsdown.client.ts）。JC tab（状态卡/核对工作台/轻发现）在 M4 落地时
- * 注入 @deepseek-ai/dsh-client-ui-sidebar-right 等依赖并在 dsh.client 补
- * inject / external 声明。
+ * Client side of the Journal Club plugin. The tab registers only after the
+ * host's sidebar, slot and Remote services are ready; the host remains the
+ * owner of all filesystem writes.
  */
 export const name = 'dsh-journal-club/client'
 
-export function apply(_ctx: Context): void {
-  // M1 无 client 行为；保留注册壳以验证 bundle 链路。
+export function apply(ctx: Context): void {
+  applyJournalClub(ctx)
 }

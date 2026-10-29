@@ -129,6 +129,21 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 被否：仅依靠 `figuresJson` 的原子 rename（缺少 CAS/快照/patch 回滚）；让 crop 直接保存 figures.json（会绕过唯一写入通道）；由 validate 判断发现覆盖或科学因果表达（超出可判定契约）。
 
+## D16 M3–M5 实施状态与验收边界（2026-10-29）
+
+- **M3 文件链实现**：新增 `src/skills/journal-club/SKILL.md` 与 `src/project/jcState.ts`，覆盖完整/局部/恢复分流、MinerU manifest 四条件缓存、三确认点、jc.md digest/revision 失效与恢复停点；单元测试覆盖状态读写/确认有效性。真实 dsh skill registry 挂载与三篇论文纯对话端到端尚未验收。
+- **M4 client 工作台实现**：新增 JC tab/store/workbench/CSS Modules，覆盖空态/状态卡/图源工作台、workspaceFiles read/watch、bbox 框与四角编辑、图注关联、裁切预览和冲突提示；写入只调用约定的 `remote.journalClub.updateFigures`。client bundle 与 store/geometry 测试通过，但**host 侧 `journalClub` RPC 服务尚未注册，真实 dsh/browser 页面交互未验证**，故不能宣称 M4 端到端完成。
+- **M5 compose 核心实现**：新增 `compose_panels`，支持 grid/rows/1+2、sharp 输出与 groups.json 成员/digest/几何登记；单测覆盖构图、缺失成员、重拼和输出契约。真实图片人工质量验收、与实际 dsh host 的加载尚未完成；PPTX 外部插件链仍未验证。
+- **阶段总验收未完成**：没有真实 dsh 安装运行、JC 工作台人工交互、三篇论文全链确认/恢复或 PPTX 导出证据。以上作为 M6/宿主集成验收项继续跟踪，不以 typecheck/build 通过代替。
+
+## D17 Remote 写入集成边界与未完成项（2026-10-29）
+
+- M4 client 工作台调用约定的 `remote.journalClub.updateFigures`，但独立 npm bundle 没有 host Typert Remote owner；不能把该调用视为已接通。
+- 调研 harness 官方 `TypertRemoteService` 与生成器：生成器要求 harness workspace 根目录同时有 `tsconfig.host.json` 和 `packages/`；`mode: package` 也走 `findWorkspaceRoot()`，不能在本仓库的独立 bundle 目录运行。NPM `@deepseek-ai/dsh-typert-generator@0.0.1-rc.1` peer Cordis 与当前 `4.0.6-alpha.1` 冲突；较新生成器依赖匹配，但仍有 workspace root 限制。
+- 因此未手工伪造 Remote descriptors，也未用 `--force` 安装不兼容 generator；client 在 RPC 未提供时保持 fail-closed，禁止绕过 `update_figures` 直接写文件。
+- **待宿主集成**：需要在 dsh profile/bundle 侧提供 Typert host/controller package face 与生成的 `./remote` contribution，再运行真实 Web/desktop session 验证读取、watch、CAS 写入和冲突 UI。当前 M4 只能标记为 client 实现已完成、真实写入链未验收。
+- 最终自动门禁（2026-10-29）：typecheck、host/client build、49/49 测试与 `npm pack --dry-run` 通过；浏览器交互、三篇论文从冷启动到 PPTX 的完整链未执行。
+
 ## 修订记录
 
 - 2026-10-26：初版（D1–D13）。

@@ -2,7 +2,7 @@
 
 运行在 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) 内的生物医学论文 **Journal Club 汇报插件**：研究者上传论文 PDF，由 agent 完成解析、图源切分、叙事大纲与幻灯片分页，交付可转 PPTX 的 markdown 版幻灯片（含讲稿与图组）。
 
-> **状态：实施中（M1 渲染底座与 M2 图源写入/校验已完成，feat/m2 分支）。** 设计文档见 [docs](docs/README.md)；路线图 M1–M6 见 [架构设计](docs/architecture/架构设计.md) §7；M1 验收证据见 [docs/verification](docs/verification/m1-mineru-overlay/README.md)。
+> **状态：M1/M2 host 工具、M3 skill/jc 状态链、M5 compose 核心与 M4 client 工作台代码已实现；M4 host RPC 写入链和 M6 端到端验收未完成。** 不宣称真实 dsh/browser/PPTX 已验收。
 
 ## 开发
 
