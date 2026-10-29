@@ -153,8 +153,9 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 3. **skill 文件路径错位**：host 侧按 `lib/index.js` 相对路径读 `./skills/journal-club/SKILL.md`，但包里只随带 `src/skills/journal-club/SKILL.md`，读取失败只进日志，斜杠菜单里没有 `journal-club`。改为解析 `../src/skills/journal-club/SKILL.md`（src 与 lib 下都成立），同步读取并从 frontmatter 取 name/description（与宿主 skill-office 一致），新增 `tests/skill.spec.ts` 固化。
 
-- **已验证**：桌面版启动正常；插件出现在 boot entries；样式表已注入；JC tab 注册并渲染空态；斜杠菜单列出 `journal-club` skill。
-- **未验证**：真实 jc.md 项目的状态卡与工作台、watch 刷新、`update_figures` 写入链（D17 的 host RPC 仍未接通）、三篇论文全链与 PPTX。headless profile 用不了桌面账号 provider（`ACCOUNT_SIGN_IN_REQUIRED`），所以 agent 侧工具/skill 的真实调用要在桌面版对话里验收。
+- **已验证**：桌面版启动正常；插件出现在 boot entries；样式表已注入；JC tab 注册并渲染空态；斜杠菜单列出 `journal-club` skill；桌面会话里模型列出 5 个工具并确认 `journal-club` skill 可用。
+- **已验证（探针项目）**：默认工作区放入 `jc.md`、真实 PDF（2605.13902）经 `render_pages` 生成的页图和两 panel 的 `figures.json`。三态切换实测：只有 `jc.md` 时显示状态卡；有 `figures.json` 时显示工作台，页图加载（1275×1651），两个框按 bbox 叠在页图上；外部改写 `figures.json`（revision 2、改图注、改 B 高度）后无需手动刷新即更新并标「刚刚变更」；删掉 `figures.json` 自动退回状态卡，恢复后自动回到工作台。全程 console 无错误。
+- **未验证**：`update_figures` 写入链（D17 的 host RPC 仍未接通，工作台的调框/采纳保存会 fail-closed）、三篇论文全链与 PPTX。headless profile 用不了桌面账号 provider（`ACCOUNT_SIGN_IN_REQUIRED`），所以 agent 侧工具/skill 的真实调用要在桌面版对话里验收。
 - 被否：保留 CSS Modules 再给工厂补 CSS loader（宿主没有公开这个契约）；在 `apply` 内轮询等服务（与宿主 loader 语义重复）。
 
 ## 修订记录
