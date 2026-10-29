@@ -146,12 +146,14 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 ## D18 桌面宿主实测：client 加载契约（2026-10-29）
 
-在本机 DeepSeek Harness 桌面版（runtime 0.2.1-rc.3）上以 `dsh plugin --profile desktop add <本仓库>` link 安装后实测，暴露并修复两项 client 契约问题：
+在本机 DeepSeek Harness 桌面版（runtime 0.2.1-rc.3）上以 `dsh plugin --profile desktop add <本仓库>` link 安装后实测，暴露并修复三项加载契约问题：
 
 1. **工厂闭包内不能有 CSS import**：tsdown CSS 管线在工厂顶部产出 `import './style.css'`，渲染层报 `Cannot use import statement outside a module`，整个 web boot 失败（应用弹窗「1 entry did not activate」）。改为 `src/client/styles.ts`：`jc-` 前缀类名的样式字符串，`apply` 时注入一次 `<style>`，删除 `.module.css` 与 `@tsdown/css`。
 2. **服务依赖要在模块级导出 `inject`**：在 `apply` 内调 `ctx.inject([...], cb)` 时，回调没有触发，tab 不出现，也没有报错。宿主内置插件（sidebar-files 等）都是模块级 `export const inject = [...]`，由 loader 等服务就绪后再调 `apply`。改为同样写法（`slots`、`sidebarRightTabs`、`remote`、`remote.workspaceFiles`）后，右侧栏引导出现「Journal Club」入口，点开后空态正常渲染，console 无错误。
 
-- **已验证**：桌面版启动正常；插件出现在 boot entries；样式表已注入；JC tab 注册并渲染空态。
+3. **skill 文件路径错位**：host 侧按 `lib/index.js` 相对路径读 `./skills/journal-club/SKILL.md`，但包里只随带 `src/skills/journal-club/SKILL.md`，读取失败只进日志，斜杠菜单里没有 `journal-club`。改为解析 `../src/skills/journal-club/SKILL.md`（src 与 lib 下都成立），同步读取并从 frontmatter 取 name/description（与宿主 skill-office 一致），新增 `tests/skill.spec.ts` 固化。
+
+- **已验证**：桌面版启动正常；插件出现在 boot entries；样式表已注入；JC tab 注册并渲染空态；斜杠菜单列出 `journal-club` skill。
 - **未验证**：真实 jc.md 项目的状态卡与工作台、watch 刷新、`update_figures` 写入链（D17 的 host RPC 仍未接通）、三篇论文全链与 PPTX。headless profile 用不了桌面账号 provider（`ACCOUNT_SIGN_IN_REQUIRED`），所以 agent 侧工具/skill 的真实调用要在桌面版对话里验收。
 - 被否：保留 CSS Modules 再给工厂补 CSS loader（宿主没有公开这个契约）；在 `apply` 内轮询等服务（与宿主 loader 语义重复）。
 
