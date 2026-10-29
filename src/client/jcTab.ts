@@ -6,6 +6,7 @@ import { workspaceFiles, discoverProjects, fileAddress, unwrap, type WorkspaceRe
 import type { UpdateFiguresRequest, UpdateFiguresResult } from './types.ts'
 import { ensureStyles, styles } from './styles.ts'
 import { projectStatus } from './projectStatus.ts'
+import { sendSessionMessage, type SessionScopes } from './sessionActions.ts'
 
 const TAB_ID = 'dsh-journal-club'
 const TAB_KIND = 'journal-club'
@@ -30,7 +31,6 @@ interface ClientContext extends Context {
   remote?: WorkspaceRemotes
   sidebarRight?: { openResource(address: string): void }
 }
-interface SessionSender { scope(id: string): { conversation: { send(text: string): Promise<void> } } }
 
 export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRemotes; context: ClientContext}): ReactElement {
   const navigation = props.useTabInfo().tab.navigation?.params?.project
@@ -77,8 +77,8 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
     return () => controller.abort()
   }, [props.remote, props.sessionId, projectPath, snapshot.loadedAt])
   const followup = useCallback(async (text: string) => {
-    const sessions = props.context.sessions as unknown as SessionSender
-    await sessions.scope(props.sessionId).conversation.send('项目：' + JSON.stringify(projectPath || '.') + '\n' + text)
+    const sessions = props.context.sessions as unknown as SessionScopes
+    await sendSessionMessage(sessions, props.sessionId, '项目：' + JSON.stringify(projectPath || '.') + '\n' + text)
   }, [props.context, props.sessionId, projectPath])
   const open = (path: string) => props.context.sidebarRight?.openResource(fileAddress(props.sessionId, projectPath ? projectPath + '/' + path : path))
   const loadPage = useCallback(async (document: string, page: number) => {

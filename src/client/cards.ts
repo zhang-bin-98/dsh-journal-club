@@ -4,6 +4,7 @@ import { cardConfirmation, cardDefinition, fileResourceAddress, type CardMarker 
 import { styles } from './styles.ts'
 import { parseFiguresJson, type FiguresJson } from '../figures/schema.ts'
 import { workspaceFiles, unwrap, type WorkspaceRemote } from './workspace.ts'
+import { sendSessionMessage, type SessionScopes } from './sessionActions.ts'
 
 interface CardProps { readonly sessionId: string; readonly node: { readonly data: CardMarker } }
 interface CardHost {
@@ -13,7 +14,7 @@ interface CardHost {
     inject(name: string, register: () => () => void): unknown
     register(entry: { name: string; key: string }, render: (props: CardProps) => ReactElement): () => void
   }
-  readonly sessions: { scope(id: string): { readonly conversation: { send(text: string): Promise<void> } } }
+  readonly sessions: SessionScopes
   readonly sidebarRight: {
     openResource(address: string): unknown
     openTab(kind: string, options?: { params: { project: string } }): unknown
@@ -100,6 +101,6 @@ function ConfirmationCard({ node, sessionId, host }: CardProps & { readonly host
       h('button', { type: 'button', className: styles.secondaryAction, disabled: sending, onClick: () => void run(() => marker.stage === 'figures'
         ? host.sidebarRight.openTab('journal-club', { params: { project: marker.project } })
         : host.sidebarRight.openResource(fileResourceAddress(sessionId, path))) }, marker.stage === 'figures' ? '打开核对工作台' : `预览 ${filename}`),
-      h('button', { type: 'button', className: styles.action, disabled: sending, onClick: () => void run(() => host.sessions.scope(sessionId).conversation.send(cardConfirmation(marker))) }, marker.stage === 'deck' ? '确认内容，渲染 PPTX' : '确认并继续')),
+      h('button', { type: 'button', className: styles.action, disabled: sending, onClick: () => void run(() => sendSessionMessage(host.sessions, sessionId, cardConfirmation(marker))) }, marker.stage === 'deck' ? '确认内容，渲染 PPTX' : '确认并继续')),
     error ? h('p', { className: styles.error, role: 'alert' }, error) : null)
 }

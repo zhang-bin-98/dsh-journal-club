@@ -169,12 +169,38 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **SmartJC 适配**：五份 research 策略原文复用；common、逐页证据、汇总、讲稿组织与分页规则合并成 narrative.md，将私有 Claim/Source/Speech ID 和结构化页面返回改为 markdown、页码、panel ID。保留科研语义，移除候选应用审批及重复应用编排，不建立新的流程引擎。
 - **官方 Remote 生成器**：使用匹配版本的 Typert generator；独立包构建阶段在 node_modules 缓存中建立临时 packages/ 与 tsconfig.host.json，复制本包源码及已安装的官方声明，改写暂存声明路径后用官方 WorkspaceAnalyzer/FaceModelEmitter/writePackageArtifacts 生成包贡献。仅分析本包 host face；不手工伪造 wire descriptors、不引入宿主源码仓库依赖。
 - **host 边界**：JournalClubService 的 updateFigures/pageInfo 声明 sessionId 资源访问，经宿主会话 cwd 解析路径；词法和 realpath 双重检查阻止越界及符号链接逃逸。图源保存复用唯一 CAS/快照服务，页图尺寸来自真实旋转后 PDF，client 不猜页面大小。
-- **工作台与入口**：补分页读取、cwd/一级子目录发现、宿主预览入口、移动/增删/改标签/放大编辑与页图裁切预览。聊天卡片使用 jc-card 标记，按钮经真实 `sessions.scope(sessionId).conversation.send(text)` 回流标准指令；旧设计中的 agent.followup 不是已核实 API，已同步替换。卡片不持久化状态、不构成确认；重新识别直接经 update_figures 更新，监督仍是 diff、高亮与快照。
+- **工作台与入口**：补分页读取、cwd/一级子目录发现、宿主预览入口、移动/增删/改标签/放大编辑与页图裁切预览。聊天卡片使用 jc-card 标记，按钮经宿主 conversation 服务回流标准指令；借用会话作用域的访问方式后续按 D22 修正为 `scope.get('conversation').send(text)`。旧设计中的 agent.followup 不是已核实 API，已替换。卡片不持久化状态、不构成确认；重新识别直接经 update_figures 更新，监督仍是 diff、高亮与快照。
 - **桌面实测修复**：host 显式依赖 sessions；client 挂载官方 contribution 后，在 remote.journalClub 的依赖作用域使用服务。补齐这两层依赖并冷启动宿主后，真实 PDF 页尺寸和图源写入可用。聊天卡片设置 groupTree=turn，避免被宿主折叠到步骤过程；不替换原生消息，宿主可能仍显示 jc-card 标记原文。新增 Panel 模式不让旧框拦截拖选；切项目重挂编辑器，页图重载清理拖动状态；裁切预览显式裁掉 bbox 外像素。
 - **发布包**：共享声明块使用 shared- 前缀，避免占用公共 types.d.ts 名称；真实 tarball 消费者在 strict、skipLibCheck=false 下通过。移除仅构建 host 且会清掉 client 的不完整 build:watch；npm test 先完整构建，host 测试验证正式产物。
 - **本次验证与边界**：85/85 回归、typecheck、构建通过；真实桌面探针验证非法引用拒写、agent 修正后 watch 更新、UI 移动/角缩放/在旧框内新增 Panel 的 CAS 保存与快照、聊天卡片摘要和宿主 Markdown 预览，详见 [开发验收](verification/development-acceptance.md)。dsh-ppt-maker@1.0.0 真实 create/edit/check/export 两页导出通过，图片与讲者备注已核对，见 [PPTX 集成](verification/pptx-integration.md)。这些证据不等同于三篇论文全流程、PPTX 视觉质检或新论文冷启动；M6 仍未完成。
 
 被否：为初始化另加第六工具；为状态与卡片引入私有持久库；手写 Remote 协议描述；照搬 SmartJC 候选审批；在缺乏页面/导出证据时宣称 M4–M6 完成。
+
+## D20 PPT 工具懒加载（2026-10-29）
+
+- **已核实**：只读检查桌面已安装的 `dsh-ppt-maker@1.0.0` 发布源码，`armLazyTools` 在 `ppt-maker` skill 成功调用后注册 11 个 `ppt_*` 工具；初始工具列表缺少这些工具不能证明插件未安装。
+- **决策**：渲染编排先调用已安装的 `ppt-maker` skill，再发现实际工具并读取 schema。加载失败或激活后工具仍不可用时报告实际错误，仅在确认未安装时提供安装引导；不增加工具或状态层。
+- **验证边界**：最初依据安装包源码；2026-10-30 独立工作区真实会话已成功加载 skill、调用 PPT 工具并导出 24 页，见 [M6 记录](verification/m6-cold-start.md)。预览异常与质量边界见 D23，不据此宣称完整 M6 通过。
+
+## D21 独立论文工作区与真实解析格式（2026-10-29）
+
+- **实测**：M6 首次选用源码仓库及已有 `out/` 子目录，出现宿主沙箱权限问题，不符合普通用户的论文工作区场景。改在仓库外仅含 PDF 的独立工作区发起，已生成分析、图源与确认卡片；完整验收仍未完成。
+- **接口差异**：v0.5.9 帮助声明支持 `-f md,json`，真实请求却返回 `field "formats" is invalid`。同版本单独 `-f json` 已完成该论文全部 18 页解析，返回 398 个 block，不能由组合格式失败推断 JSON 完全不可用。skill 改为分别请求 md 与 json，并复用已有产物；单格式仍失败时才记录实际缺口并视觉定位，不静默伪装解析成功。
+- **图源纠偏**：首轮模型将 40 个原文字母 Panel 合为 20 个裁切单元，并在报告残余裁切缺陷时留下空 flags。skill 明确逐标签保留图源身份、保留完整图注、将未解决疑点写入已有 flags；合图继续使用既有 compose_panels，不增加新工具或状态层。
+- **证据边界**：见 [M6 冷启动验收](verification/m6-cold-start.md)。后续已完成单篇开发测试导出，图源质量和修订后全新会话回归仍未通过；不能以本次人工纠偏替代冷启动能力证明。
+
+## D22 借用会话作用域的服务访问（2026-10-30）
+
+- **实测**：独立工作区的大纲确认卡片点击后报 `cannot get property "conversation" without inject`，消息未发送。插件已声明全局 conversation 依赖，但 `sessions.scope()` 返回宿主所有的借用 Context，不继承调用插件的注入声明。
+- **适配**：按宿主 ui-conversation 的实际实现，使用 `scope.get('conversation').send(text)`，保留服务对目标会话 Context 的绑定；卡片与工作台复用一个薄发送函数。会话或服务已释放时明确报错，不自行创建会话或绕过宿主发送接口。
+- **验证**：真实 Cordis Context 回归先复现直接属性读取失败，再确认 get() 发送时仍绑定指定会话；缺失 scope/服务测试通过。桌面重测结果见 [M6 冷启动验收](verification/m6-cold-start.md)。
+
+## D23 PPTX 内容完整性与预览异常（2026-10-30）
+
+- **实测**：独立工作区真实会话已导出 24 页。首版页数、图片数与备注数均正确，但第 3–24 页备注被模型压缩，违背 deck 唯一内容源；只数备注不能发现该问题。正常重新导出后，按 slide→notesSlide 关系逐页比较，24 页讲稿与 deck 全文一致（仅去 Markdown 格式并归一化空白），30 张引用图片字节均保留。
+- **外部差异**：`ppt_render` 预览明显放大并截断。独立 PowerPoint 受保护视图抽查第 1、4、7、8、15、20 页，未复现该比例异常；暂不据此推定具体底层原因，也不通过缩小内容去补偿错误预览。
+- **决策**：skill 明确备注只复制不摘要，导出后核对逐页正文；异常预览使用可用的独立查看器复核。结构、语义、视觉分别记录，XML 几何不代替目视检查。沿用外部 PPT 能力，不自建转换器或渲染器。
+- **边界**：上述六页仅为抽查，邻图残影仍明显，来源脚注偏浅；完整逐页视觉与三篇论文验收未通过。证据及复核脚本见 [M6 记录](verification/m6-cold-start.md)。
 
 ## 修订记录
 
@@ -185,3 +211,7 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - 2026-10-29：D18（桌面宿主实测：client 加载契约），同步修订 D12/D14/D16 与架构 §1.3、§2、§5 的样式描述。
 
 - 2026-10-29：D19（文件初始化、随包 skill/helper、官方 Remote 生成与工作台/卡片集成收口；验收边界分列）。
+- 2026-10-29：D20（PPT skill 激活先于工具可用性检查）。
+- 2026-10-29：D21（独立论文工作区、分格式解析及 Panel 身份与疑点标注）。
+- 2026-10-30：D22（借用会话 Context 的服务访问与确认按钮修复）。
+- 2026-10-30：D23（完整讲稿比对、异常预览的独立核对与验收边界）。

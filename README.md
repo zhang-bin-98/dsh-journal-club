@@ -19,7 +19,7 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 
 项目状态 helper 可由 `dsh-journal-club/project` 导入；skill 与文件示例、科研叙事规则、五种研究策略一并随包交付。完整流程在论文子文件夹中创建 `jc.md` 和空 `groups.json`，首次图源写入使用 `update_figures` 的 `base_rev: 0` 初始化协议；局部任务不创建项目状态。
 
-MinerU CLI 用法已按 v0.5.9 帮助核实：在项目目录运行 `mineru-open-api extract main.pdf -f md,json -o parse/main/`，补充材料单独解析；云端解析会上传论文，token 通过 CLI auth 或环境变量配置，不写入项目。PPTX 主路径为外部 dsh-ppt-maker，需在目标宿主安装并验收；未安装时仍保留 markdown 与图片产物。
+在自己的论文工作目录使用插件，无需在插件源码仓库内操作。MinerU v0.5.9 实测需分别运行 `mineru-open-api extract main.pdf -f md -o parse/main/` 与 `mineru-open-api extract main.pdf -f json -o parse/main/`，复用已获取的产物，补充材料单独解析；组合格式曾被服务端拒绝，见 [D21](docs/decisions.md#d21-独立论文工作区与真实解析格式2026-10-29)。云端解析会上传论文，token 通过 CLI auth 或环境变量配置，不写入项目，并在实际执行环境验证可用性。PPTX 主路径为外部 dsh-ppt-maker，需在目标宿主安装并验收；未安装时仍保留 markdown 与图片产物。
 
 ## 核心闭环
 
