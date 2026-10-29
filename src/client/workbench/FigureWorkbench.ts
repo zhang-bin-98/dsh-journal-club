@@ -11,7 +11,7 @@ import {
 import type { FigurePanel, FigureRecord, FiguresFile, ProjectSnapshot, ProjectStore, JsonPatch } from '../types.ts'
 import { isUpdateConflict } from '../types.ts'
 import { bboxStyle, DEFAULT_PAGE_SIZE, normalizeBBox, resizeBBox, type PageSize, type ResizeHandle } from './geometry.ts'
-import styles from '../jcTab.module.css'
+import { styles } from '../styles.ts'
 
 export interface FigureWorkbenchProps {
   readonly store: ProjectStore

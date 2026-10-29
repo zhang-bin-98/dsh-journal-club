@@ -45,10 +45,6 @@ export default defineConfig({
   hash: false,
   outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
   deps: { neverBundle: PLATFORM_MODULES },
-  css: {
-    inject: true,
-    modules: { generateScopedName: 'jc_[name]_[local]_[hash]' },
-  },
   // tsdown 不透传 rolldown 的 intro/outro（静默丢弃），包装整体放 banner/footer。
   banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(manifest.name)}, factory: (require) => {\nvar module = { exports: {} }; var exports = module.exports;`,
   footer: 'return module.exports; } });',

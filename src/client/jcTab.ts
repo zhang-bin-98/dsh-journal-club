@@ -9,7 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createProjectStore } from './store.ts'
 import { FigureWorkbench } from './workbench/FigureWorkbench.ts'
 import type { JournalClubRpcPort, WorkspaceFilesPort } from './types.ts'
-import styles from './jcTab.module.css'
+import { ensureStyles, styles } from './styles.ts'
 
 const TAB_ID = 'dsh-journal-club'
 const TAB_KIND = 'journal-club'
@@ -114,6 +114,7 @@ export function JournalClubTab(props: SidebarTabBodyProps & { readonly remote: W
 }
 
 export function apply(ctx: Context): void {
+  ensureStyles()
   ctx.inject(['slots', 'sidebarRightTabs', 'remote'], () => {
     const active = ctx as ClientContext
     if (active.slots === undefined || active.sidebarRightTabs === undefined || active.remote === undefined) return
