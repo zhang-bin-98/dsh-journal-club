@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
+import { parseFiguresJson, validateFiguresJson } from '../src/figures/figuresJson.ts'
+import { isSourceLineValid, parseDeck } from '../src/validate/markdown.ts'
 import {
   createJcFile,
   createJcMarkdown,
@@ -35,6 +37,21 @@ function baseState() {
 }
 
 describe('jc state and confirmation contract', () => {
+  it('随 skill 的项目示例符合实际文件解析契约', async () => {
+    const reference = await readFile(new URL('../src/skills/journal-club/references/formats.md', import.meta.url), 'utf8')
+    const markdown = [...reference.matchAll(/```markdown\n([\s\S]*?)\n```/gu)].map(match => match[1]!)
+    const json = [...reference.matchAll(/```json\n([\s\S]*?)\n```/gu)].map(match => match[1]!)
+    expect(parseJcMarkdown(markdown[0]!)).toMatchObject({ stage: 'analysis', confirmations: {} })
+    const figures = validateFiguresJson(parseFiguresJson(json[0]!, 'skill example'))
+    expect(figures.figures[0]?.panels[0]?.id).toBe('fig1_whole')
+    expect(JSON.parse(json[1]!)).toEqual({ version: 1, groups: [] })
+    const deck = parseDeck(markdown[2]!)
+    expect(deck.pages).toHaveLength(1)
+    expect(deck.pages[0]?.declaredPage).toBe(1)
+    expect(deck.pages[0]?.speech).toContain('讲稿')
+    expect(isSourceLineValid(deck.pages[0]!.images[0]!.sourceLine!)).toBe(true)
+    expect(deck.pages[0]!.images[0]!.path).toBe(`figures/${figures.figures[0]!.panels[0]!.id}.png`)
+  })
   it('创建、序列化、解析 jc.md，并保留正文备注', () => {
     const raw = createJcMarkdown({
       title: '联合治疗克服耐药',
@@ -89,6 +106,20 @@ describe('jc state and confirmation contract', () => {
     expect(updated.confirmations.outline?.digest).toBe(digestText(outline))
     const raw = updateJcMarkdown(serializeJcMarkdown(initial), { stage: 'deck' })
     expect(parseJcMarkdown(raw).stage).toBe('deck')
+  })
+
+  it('读取文档中的未加引号时间、摘要和带逗号的字符串', () => {
+    const raw = createJcMarkdown(baseState()).replace('confirmations:', [
+      'confirmations:',
+      '  figures: { revision: 3, at: 2026-10-26T14:00 }',
+      `  outline: { digest: ${digestText(outline)}, at: 2026-10-26T14:00:00+08:00 }`,
+      `  deck: { digest: ${digestText(deck)}, groups_digest: ${digestText(groups)}, at: "2026-10-26T14:00, reviewed" }`,
+    ].join('\n'))
+    expect(parseJcMarkdown(raw).confirmations).toEqual({
+      figures: { revision: 3, at: '2026-10-26T14:00' },
+      outline: { digest: digestText(outline), at: '2026-10-26T14:00:00+08:00' },
+      deck: { digest: digestText(deck), groups_digest: digestText(groups), at: '2026-10-26T14:00, reviewed' },
+    })
   })
 
   it('确认摘要区分 missing、confirmed 和 stale', () => {

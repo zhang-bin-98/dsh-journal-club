@@ -131,12 +131,16 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 ## D16 M3–M5 实施状态与验收边界（2026-10-29）
 
+以下记录该次交付时的边界；后续桌面验证见 D18，本次文件链与 Remote 修复见 D19。
+
 - **M3 文件链实现**：新增 `src/skills/journal-club/SKILL.md` 与 `src/project/jcState.ts`，覆盖完整/局部/恢复分流、MinerU manifest 四条件缓存、三确认点、jc.md digest/revision 失效与恢复停点；单元测试覆盖状态读写/确认有效性。真实 dsh skill registry 挂载与三篇论文纯对话端到端尚未验收。
 - **M4 client 工作台实现**：新增 JC tab/store/workbench/样式表，覆盖空态/状态卡/图源工作台、workspaceFiles read/watch、bbox 框与四角编辑、图注关联、裁切预览和冲突提示；写入只调用约定的 `remote.journalClub.updateFigures`。client bundle 与 store/geometry 测试通过，但**host 侧 `journalClub` RPC 服务尚未注册，真实 dsh/browser 页面交互未验证**，故不能宣称 M4 端到端完成。
 - **M5 compose 核心实现**：新增 `compose_panels`，支持 grid/rows/1+2、sharp 输出与 groups.json 成员/digest/几何登记；单测覆盖构图、缺失成员、重拼和输出契约。真实图片人工质量验收、与实际 dsh host 的加载尚未完成；PPTX 外部插件链仍未验证。
 - **阶段总验收未完成**：没有真实 dsh 安装运行、JC 工作台人工交互、三篇论文全链确认/恢复或 PPTX 导出证据。以上作为 M6/宿主集成验收项继续跟踪，不以 typecheck/build 通过代替。
 
 ## D17 Remote 写入集成边界与未完成项（2026-10-29）
+
+本条保留当时阻塞原因；D19 已补独立包生成适配，真实页面验收仍需单独记录。
 
 - M4 client 工作台调用约定的 `remote.journalClub.updateFigures`，但独立 npm bundle 没有 host Typert Remote owner；不能把该调用视为已接通。
 - 调研 harness 官方 `TypertRemoteService` 与生成器：生成器要求 harness workspace 根目录同时有 `tsconfig.host.json` 和 `packages/`；`mode: package` 也走 `findWorkspaceRoot()`，不能在本仓库的独立 bundle 目录运行。NPM `@deepseek-ai/dsh-typert-generator@0.0.1-rc.1` peer Cordis 与当前 `4.0.6-alpha.1` 冲突；较新生成器依赖匹配，但仍有 workspace root 限制。
@@ -155,8 +159,22 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 - **已验证**：桌面版启动正常；插件出现在 boot entries；样式表已注入；JC tab 注册并渲染空态；斜杠菜单列出 `journal-club` skill；桌面会话里模型列出 5 个工具并确认 `journal-club` skill 可用。
 - **已验证（探针项目）**：默认工作区放入 `jc.md`、真实 PDF（2605.13902）经 `render_pages` 生成的页图和两 panel 的 `figures.json`。三态切换实测：只有 `jc.md` 时显示状态卡；有 `figures.json` 时显示工作台，页图加载（1275×1651），两个框按 bbox 叠在页图上；外部改写 `figures.json`（revision 2、改图注、改 B 高度）后无需手动刷新即更新并标「刚刚变更」；删掉 `figures.json` 自动退回状态卡，恢复后自动回到工作台。全程 console 无错误。
-- **未验证**：`update_figures` 写入链（D17 的 host RPC 仍未接通，工作台的调框/采纳保存会 fail-closed）、三篇论文全链与 PPTX。headless profile 用不了桌面账号 provider（`ACCOUNT_SIGN_IN_REQUIRED`），所以 agent 侧工具/skill 的真实调用要在桌面版对话里验收。
+- **当次未验证**：`update_figures` 写入链（当时 D17 的 host RPC 仍未接通，工作台的调框/采纳保存会 fail-closed）、三篇论文全链与 PPTX。headless profile 用不了桌面账号 provider（`ACCOUNT_SIGN_IN_REQUIRED`），所以 agent 侧工具/skill 的真实调用要在桌面版对话里验收。
 - 被否：保留 CSS Modules 再给工厂补 CSS loader（宿主没有公开这个契约）；在 `apply` 内轮询等服务（与宿主 loader 语义重复）。
+
+## D19 文件链与宿主集成收口（2026-10-29）
+
+- **首次图源写入**：修复 skill 要求唯一写入通道而服务不能创建文件的闭环缺口。缺文件时 base_rev=0，对空初值应用现有 JSON Patch；完整数据校验后写 revision=1，首次无旧版快照。已有文件继续严格 CAS，初始化和更新共享锁与写入服务，不新增工具。
+- **状态与 skill 交付**：jc.md 内联对象只分隔键后的第一个冒号，兼容文档中的未加引号 ISO 时间与 sha256；helper 以 `./project` 导出。随 skill 提供 formats、narrative 和五份 research 策略，注册时附安装目录及 helper 路径。完整项目初始化空 groups.json，无拼图亦有可校验摘要。MinerU v0.5.9 帮助已核对，PDF 为位置参数，`-f md,json` 为输出格式；补充材料单独输出，未因此调用云端服务。
+- **SmartJC 适配**：五份 research 策略原文复用；common、逐页证据、汇总、讲稿组织与分页规则合并成 narrative.md，将私有 Claim/Source/Speech ID 和结构化页面返回改为 markdown、页码、panel ID。保留科研语义，移除候选应用审批及重复应用编排，不建立新的流程引擎。
+- **官方 Remote 生成器**：使用匹配版本的 Typert generator；独立包构建阶段在 node_modules 缓存中建立临时 packages/ 与 tsconfig.host.json，复制本包源码及已安装的官方声明，改写暂存声明路径后用官方 WorkspaceAnalyzer/FaceModelEmitter/writePackageArtifacts 生成包贡献。仅分析本包 host face；不手工伪造 wire descriptors、不引入宿主源码仓库依赖。
+- **host 边界**：JournalClubService 的 updateFigures/pageInfo 声明 sessionId 资源访问，经宿主会话 cwd 解析路径；词法和 realpath 双重检查阻止越界及符号链接逃逸。图源保存复用唯一 CAS/快照服务，页图尺寸来自真实旋转后 PDF，client 不猜页面大小。
+- **工作台与入口**：补分页读取、cwd/一级子目录发现、宿主预览入口、移动/增删/改标签/放大编辑与页图裁切预览。聊天卡片使用 jc-card 标记，按钮经真实 `sessions.scope(sessionId).conversation.send(text)` 回流标准指令；旧设计中的 agent.followup 不是已核实 API，已同步替换。卡片不持久化状态、不构成确认；重新识别直接经 update_figures 更新，监督仍是 diff、高亮与快照。
+- **桌面实测修复**：host 显式依赖 sessions；client 挂载官方 contribution 后，在 remote.journalClub 的依赖作用域使用服务。补齐这两层依赖并冷启动宿主后，真实 PDF 页尺寸和图源写入可用。聊天卡片设置 groupTree=turn，避免被宿主折叠到步骤过程；不替换原生消息，宿主可能仍显示 jc-card 标记原文。新增 Panel 模式不让旧框拦截拖选；切项目重挂编辑器，页图重载清理拖动状态；裁切预览显式裁掉 bbox 外像素。
+- **发布包**：共享声明块使用 shared- 前缀，避免占用公共 types.d.ts 名称；真实 tarball 消费者在 strict、skipLibCheck=false 下通过。移除仅构建 host 且会清掉 client 的不完整 build:watch；npm test 先完整构建，host 测试验证正式产物。
+- **本次验证与边界**：85/85 回归、typecheck、构建通过；真实桌面探针验证非法引用拒写、agent 修正后 watch 更新、UI 移动/角缩放/在旧框内新增 Panel 的 CAS 保存与快照、聊天卡片摘要和宿主 Markdown 预览，详见 [开发验收](verification/development-acceptance.md)。dsh-ppt-maker@1.0.0 真实 create/edit/check/export 两页导出通过，图片与讲者备注已核对，见 [PPTX 集成](verification/pptx-integration.md)。这些证据不等同于三篇论文全流程、PPTX 视觉质检或新论文冷启动；M6 仍未完成。
+
+被否：为初始化另加第六工具；为状态与卡片引入私有持久库；手写 Remote 协议描述；照搬 SmartJC 候选审批；在缺乏页面/导出证据时宣称 M4–M6 完成。
 
 ## 修订记录
 
@@ -165,3 +183,5 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - 2026-10-28：D15（M2 图源写入与校验实现默认值）。
 - 2026-10-29：D16、D17（M3–M5 实施状态，Remote 写入边界）。
 - 2026-10-29：D18（桌面宿主实测：client 加载契约），同步修订 D12/D14/D16 与架构 §1.3、§2、§5 的样式描述。
+
+- 2026-10-29：D19（文件初始化、随包 skill/helper、官方 Remote 生成与工作台/卡片集成收口；验收边界分列）。

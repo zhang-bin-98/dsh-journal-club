@@ -55,3 +55,25 @@ export function pageSizeFromImage(width: number, height: number, dpi = 150): Pag
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
+
+/** SmartJC moveBox: preserve size while clamping the translated rectangle to the page. */
+export function moveBBox(bbox: BBox, dx: number, dy: number, page: PageSize): BBox {
+  const width = bbox[2] - bbox[0]
+  const height = bbox[3] - bbox[1]
+  const x = clamp(bbox[0] + dx, 0, page.width - width)
+  const y = clamp(bbox[1] + dy, 0, page.height - height)
+  return [x, y, x + width, y + height]
+}
+
+/** Apply the page gesture inside its Figure region, keeping the persisted containment contract. */
+export function editWithinRegion(bbox: BBox, region: BBox, dx: number, dy: number, handle?: ResizeHandle): BBox {
+  const page = { width: region[2] - region[0], height: region[3] - region[1] }
+  const local: BBox = [bbox[0] - region[0], bbox[1] - region[1], bbox[2] - region[0], bbox[3] - region[1]]
+  const result = handle ? resizeBBox(local, handle, dx, dy, page) : moveBBox(local, dx, dy, page)
+  return [result[0] + region[0], result[1] + region[1], result[2] + region[0], result[3] + region[1]]
+}
+
+export function drawWithinRegion(bbox: BBox, region: BBox): BBox {
+  const result = normalizeBBox([bbox[0] - region[0], bbox[1] - region[1], bbox[2] - region[0], bbox[3] - region[1]], { width: region[2] - region[0], height: region[3] - region[1] })
+  return [result[0] + region[0], result[1] + region[1], result[2] + region[0], result[3] + region[1]]
+}

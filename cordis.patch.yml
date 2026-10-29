@@ -1,5 +1,5 @@
-# M2 已注册：render_pages / crop / update_figures / validate。
-# package.json 的 dsh.client 声明 + ./client 导出提供（M1 为空壳，M4 落 JC tab）。
+# 五个原子工具与 Journal Club host 服务。
+# package.json 的 dsh.client 与 ./client 导出提供工作台和聊天卡片。
 - insert:
   - id: journal-club
     name: dsh-journal-club

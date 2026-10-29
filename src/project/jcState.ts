@@ -309,11 +309,11 @@ function parseInlineObject(value: string): Record<string, unknown> {
   if (!value.startsWith('{') || !value.endsWith('}')) throw new JcMarkdownError(`内联对象无效：${value}`)
   const result: Record<string, unknown> = {}
   for (const item of splitTopLevel(value.slice(1, -1), ',')) {
-    const colon = splitTopLevel(item, ':')
-    if (colon.length !== 2) throw new JcMarkdownError(`内联对象字段无效：${item}`)
-    const key = unquote(colon[0] ?? '')
+    const colon = item.indexOf(':')
+    if (colon < 1) throw new JcMarkdownError(`内联对象字段无效：${item}`)
+    const key = unquote(item.slice(0, colon).trim())
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key)) throw new JcMarkdownError(`字段名无效：${key}`)
-    result[key] = parseScalar(colon[1] ?? '')
+    result[key] = parseScalar(item.slice(colon + 1).trim())
   }
   return result
 }

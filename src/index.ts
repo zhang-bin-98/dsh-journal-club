@@ -5,6 +5,8 @@ import { registerRenderPages } from './tools/renderPages.ts'
 import { registerUpdateFigures } from './tools/updateFigures.ts'
 import { registerValidate } from './tools/validate.ts'
 import { registerJournalClubSkill } from './skill.ts'
+import { JournalClubService } from './host.ts'
+export { JournalClubService } from './host.ts'
 
 /**
  * Host tools: render_pages, crop, compose_panels, update_figures, validate.
@@ -14,6 +16,7 @@ export const name = 'dsh-journal-club'
 export const inject = ['tools']
 
 export function apply(ctx: Context): void {
+  ctx.plugin(JournalClubService)
   registerJournalClubSkill(ctx)
   registerRenderPages(ctx)
   registerCrop(ctx)

@@ -2,7 +2,7 @@
 
 运行在 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) 内的生物医学论文 **Journal Club 汇报插件**：研究者上传论文 PDF，由 agent 完成解析、图源切分、叙事大纲与幻灯片分页，交付可转 PPTX 的 markdown 版幻灯片（含讲稿与图组）。
 
-> **状态：M1/M2 host 工具、M3 skill/jc 状态链、M5 compose 核心与 M4 client 工作台代码已实现；M4 host RPC 写入链和 M6 端到端验收未完成。** 不宣称真实 dsh/browser/PPTX 已验收。
+> **状态：五个工具、skill 文件链、工作台与 host RPC、项目发现和聊天确认入口已实现；85 项回归、桌面拖框写入及 PPTX 本地工具链已验证。完整论文端到端验收仍未完成。** 本次证据见 [开发验收](docs/verification/development-acceptance.md)、[PPTX 集成](docs/verification/pptx-integration.md)，实现取舍见 [D19](docs/decisions.md#d19-文件链与宿主集成收口2026-10-29)。
 
 ## 开发
 
@@ -15,7 +15,11 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 
 安装到 dsh：`dsh plugin add <本仓库路径>`（bundle 声明与插件行见 `package.json` 的
 `dsh` 字段与 `cordis.patch.yml`）。已注册工具：`render_pages`（PDF 页 → PNG 底图）、`crop`（figures.json panel bbox → figures/<id>.png）、
-`update_figures`（RFC 6902 patch + base_rev CAS + .history 快照）、`validate`（figures/groups/deck 一致性校验）。
+`compose_panels`（拼合 Panel 并登记 groups.json）、`update_figures`（初始化 / RFC 6902 patch + base_rev CAS + .history 快照）、`validate`（figures/groups/deck 一致性校验）。
+
+项目状态 helper 可由 `dsh-journal-club/project` 导入；skill 与文件示例、科研叙事规则、五种研究策略一并随包交付。完整流程在论文子文件夹中创建 `jc.md` 和空 `groups.json`，首次图源写入使用 `update_figures` 的 `base_rev: 0` 初始化协议；局部任务不创建项目状态。
+
+MinerU CLI 用法已按 v0.5.9 帮助核实：在项目目录运行 `mineru-open-api extract main.pdf -f md,json -o parse/main/`，补充材料单独解析；云端解析会上传论文，token 通过 CLI auth 或环境变量配置，不写入项目。PPTX 主路径为外部 dsh-ppt-maker，需在目标宿主安装并验收；未安装时仍保留 markdown 与图片产物。
 
 ## 核心闭环
 

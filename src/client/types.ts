@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 export type BBox = readonly [number, number, number, number]
 
 export interface FigureRegion {
@@ -126,17 +124,6 @@ export interface ProjectStore {
   readonly dispose: () => void
 }
 
-export interface StoreErrorState {
-  readonly message: string
-  readonly detail?: ReactNode
-}
-
 export function isUpdateConflict(result: UpdateFiguresResult): result is UpdateFiguresConflict {
   return result.ok === false && result.conflict === true
-}
-
-export function isFiguresFile(value: unknown): value is FiguresFile {
-  if (typeof value !== 'object' || value === null) return false
-  const item = value as Record<string, unknown>
-  return item.version === 1 && typeof item.revision === 'number' && Array.isArray(item.figures)
 }

@@ -27,6 +27,22 @@ function filesOf(readFigures: () => FiguresFile, changes?: WorkspaceFilesPort['c
 }
 
 describe('client project store', () => {
+  it('子目录编辑始终发往选定项目，资产读取失败后允许重试', async () => {
+    const files = filesOf(() => baseFigures)
+    let attempts = 0
+    files.readBytes = async () => {
+      if (++attempts === 1) throw new Error('not found')
+      return {data: new Uint8Array([1])}
+    }
+    const rpc = {updateFigures: vi.fn(async () => ({ok: true as const, conflict: false as const, revision: 3}))}
+    const store = createProjectStore({files, updateFigures: rpc, sessionId: 's', projectPath: 'paper'})
+    await store.refresh()
+    await store.updateFigures({figures_json: 'wrong/figures.json', patch: [], base_rev: 2})
+    expect(rpc.updateFigures).toHaveBeenCalledWith(expect.objectContaining({figures_json: 'paper/figures.json'}))
+    await expect(store.readAsset('pages/main-001.png')).rejects.toThrow('not found')
+    await expect(store.readAsset('pages/main-001.png')).resolves.toContain('data:image/png')
+    store.dispose()
+  })
   it('从文件读取 figures/jc，更新只调用 host RPC，不提供直写路径', async () => {
     let updateCalls: UpdateFiguresRequest[] = []
     const rpc = {
@@ -73,5 +89,65 @@ describe('client project store', () => {
     expect(actual).toEqual(result)
     expect(rpc.updateFigures).toHaveBeenCalledTimes(1)
     store.dispose()
+  })
+})
+
+describe('client store 文件与刷新边界', () => {
+  it('坏 JSON 或不满足 schema 的图源不进入快照，并清除此前有效图源', async () => {
+    for (const invalid of ['{broken', JSON.stringify({ ...baseFigures, documents: [] })]) {
+      let text = JSON.stringify(baseFigures)
+      const files = filesOf(() => baseFigures)
+      files.read = async (_session, path) => path.endsWith('figures.json')
+        ? { text, version: text }
+        : { text: '项目备注', version: 'jc-1' }
+      const store = createProjectStore({ files, sessionId: 'invalid-figures' })
+      try {
+        await store.refresh()
+        expect(store.getSnapshot().figures?.revision).toBe(2)
+        text = invalid
+        await store.refresh()
+        expect(store.getSnapshot().figures).toBeUndefined()
+        expect(store.getSnapshot().error).toBeTruthy()
+        expect(store.getSnapshot().jcText).toBe('项目备注')
+      } finally { store.dispose() }
+    }
+  })
+
+  it('读取尚未完成时收到 watch 变化，自动补读最新 revision', async () => {
+    let releaseRead!: () => void
+    const firstRead = new Promise<void>(resolve => { releaseRead = resolve })
+    let pushChange!: () => void
+    const changed = new Promise<void>(resolve => { pushChange = resolve })
+    let acknowledgeChange!: () => void
+    const delivered = new Promise<void>(resolve => { acknowledgeChange = resolve })
+    let current = baseFigures
+    let figureReads = 0
+    const files = filesOf(() => current, async function* (_session, path, signal) {
+      if (!path.endsWith('figures.json')) return
+      await changed
+      if (signal.aborted) return
+      yield { version: '3' }
+      // Reaching here means the store consumed the event while its first read was pending.
+      acknowledgeChange()
+    })
+    files.read = async (_session, path) => {
+      if (!path.endsWith('figures.json')) return { text: '项目备注', version: 'jc-1' }
+      const captured = current
+      figureReads += 1
+      if (figureReads === 1) await firstRead
+      return { text: JSON.stringify(captured), version: String(captured.revision) }
+    }
+    const store = createProjectStore({ files, sessionId: 'watch-race' })
+    try {
+      expect(figureReads).toBe(1)
+      current = { ...baseFigures, revision: 3 }
+      pushChange()
+      await delivered
+      expect(store.getSnapshot().loadedAt).toBe(0)
+      releaseRead()
+      // No explicit refresh: only the watch event can request the required second read.
+      await vi.waitFor(() => expect(store.getSnapshot().figures?.revision).toBe(3))
+      expect(figureReads).toBe(2)
+    } finally { releaseRead(); pushChange(); store.dispose() }
   })
 })

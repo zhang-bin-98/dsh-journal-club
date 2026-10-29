@@ -8,7 +8,7 @@ import type {
   UpdateFiguresResult,
   WorkspaceResourceDeps,
 } from './types.ts'
-import { isFiguresFile } from './types.ts'
+import { parseFiguresJson } from '../figures/schema.ts'
 
 const EMPTY_SNAPSHOT: ProjectSnapshot = {
   versions: {},
@@ -22,9 +22,7 @@ function pathFor(root: string | undefined, name: string): string {
 }
 
 function parseFigures(text: string): FiguresFile {
-  const value: unknown = JSON.parse(text)
-  if (!isFiguresFile(value)) throw new Error('figures.json 格式不完整：需要 version=1、revision 和 figures 数组。')
-  return value
+  return parseFiguresJson(text)
 }
 
 function figureDigest(figure: FigureRecord): string {
@@ -75,6 +73,7 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
   let revision = 0
   let refreshController: AbortController | undefined
   let refreshPromise: Promise<void> | undefined
+  let refreshQueued = false
   const listeners = new Set<() => void>()
   const watchControllers: AbortController[] = []
   const assetCache = new Map<string, Promise<string>>()
@@ -118,6 +117,9 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
         figuresError = `无法读取 figures.json：${messageOf(figuresResult.reason)}`
       }
       if (jcResult.status === 'fulfilled') jcText = jcResult.value.text
+      else if (!isAbortError(jcResult.reason) && !isMissingResourceError(jcResult.reason)) {
+        figuresError ??= `无法读取 jc.md：${messageOf(jcResult.reason)}`
+      }
       const versions: Record<string, string | undefined> = {
         figures: figuresResult.status === 'fulfilled' ? figuresResult.value.version : undefined,
         jc: jcResult.status === 'fulfilled' ? jcResult.value.version : undefined,
@@ -145,8 +147,15 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
 
   function scheduleRefresh(): void {
     if (disposed) return
+    refreshQueued = true
     if (refreshPromise !== undefined) return
-    refreshPromise = refresh().finally(() => {
+    refreshPromise = (async () => {
+      while (refreshQueued && !disposed) {
+        refreshQueued = false
+        assetCache.clear()
+        await refresh()
+      }
+    })().finally(() => {
       refreshPromise = undefined
     })
   }
@@ -160,8 +169,7 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
       try {
         for await (const change of changes) {
           if (controller.signal.aborted || disposed) return
-          if (!change.absent) scheduleRefresh()
-          else scheduleRefresh()
+          scheduleRefresh()
         }
       } catch (error) {
         if (!controller.signal.aborted && !disposed) {
@@ -175,7 +183,7 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
     if (deps.updateFigures === undefined) {
       return Promise.reject(new Error('宿主未提供 update_figures RPC；为避免绕过统一写入通道，工作台不会直写文件。'))
     }
-    return deps.updateFigures.updateFigures(request).then(result => {
+    return deps.updateFigures.updateFigures({ ...request, figures_json: pathFor(deps.projectPath, 'figures.json') }).then(result => {
       if (result.ok) scheduleRefresh()
       return result
     })
@@ -185,7 +193,7 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
     const cached = assetCache.get(path)
     if (cached !== undefined && signal?.aborted !== true) return cached
     const promise = deps.files.readBytes(deps.sessionId, pathFor(deps.projectPath, path), signal ?? new AbortController().signal)
-      .then(result => dataUrl(path, result.data))
+      .then(result => dataUrl(path, result.data)).catch(error => { assetCache.delete(path); throw error })
     if (signal?.aborted !== true) assetCache.set(path, promise)
     return promise
   }

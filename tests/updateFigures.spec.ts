@@ -68,6 +68,60 @@ afterEach(async () => {
 })
 
 describe('figuresStore RFC6902 patch', () => {
+  it('首次创建从空数组应用 patch，原子写入 revision 1 且不产生虚构快照', async () => {
+    const path = join(work, 'new-paper', 'figures.json')
+    const initial = fixtureFigures()
+    const result = await updateFiguresFile(path, [
+      { op: 'add', path: '/documents/-', value: initial.documents[0] },
+      { op: 'add', path: '/figures/-', value: initial.figures[0] },
+    ], 0)
+    expect(result).toMatchObject({ ok: true, revision: 1, figures: { documents: initial.documents, figures: initial.figures } })
+    expect(result.ok && result.historyPath).toBeUndefined()
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ ...initial, revision: 1 })
+    expect(await readdir(join(work, 'new-paper'))).toEqual(['figures.json'])
+    // The first later edit snapshots the real revision 1, not the virtual base.
+    const edited = await updateFiguresFile(path, [{ op: 'replace', path: '/status', value: 'confirmed' }], 1)
+    expect(edited.ok && edited.historyPath).toContain('.rev-000000000001-')
+  })
+
+  it('首次创建校验或 patch 失败不留主文件、快照或锁', async () => {
+    const path = join(work, 'invalid-paper', 'figures.json')
+    await expect(updateFiguresFile(path, [], 0)).rejects.toThrow(/documents/)
+    await expect(updateFiguresFile(path, [{ op: 'replace', path: '/figures/0/status', value: 'viewed' }], 0)).rejects.toThrow()
+    expect(await readdir(join(work, 'invalid-paper'))).toEqual([])
+  })
+
+  it('不存在的文件拒绝非零 base_rev', async () => {
+    const path = join(work, 'wrong-base', 'figures.json')
+    await expect(updateFiguresFile(path, [{ op: 'add', path: '', value: fixtureFigures() }], 1))
+      .rejects.toThrow(/首次创建必须使用 base_rev=0/)
+    expect(await readdir(join(work, 'wrong-base'))).toEqual([])
+  })
+
+  it('并发首次创建只有一个成功，另一个收到已落盘版本冲突', async () => {
+    const path = join(work, 'concurrent-new', 'figures.json')
+    const results = await Promise.all([
+      updateFiguresFile(path, [{ op: 'add', path: '', value: fixtureFigures() }], 0),
+      updateFiguresFile(path, [{ op: 'add', path: '', value: { ...fixtureFigures(), status: 'confirmed' } }], 0),
+    ])
+    expect(results.filter(result => result.ok)).toHaveLength(1)
+    expect(results.filter(result => result.conflict)).toHaveLength(1)
+    expect(results.find(result => result.conflict)).toMatchObject({ revision: 1, current: { revision: 1 } })
+    expect(await readdir(join(work, 'concurrent-new'))).toEqual(['figures.json'])
+  })
+
+  it('update_figures 工具可首次创建且省略 history_path', async () => {
+    const { ctx, defs } = captureTools()
+    registerUpdateFigures(ctx)
+    const result = await defs.get('update_figures')!.execute({
+      figures_json: 'tool-new/figures.json',
+      patch: [{ op: 'add', path: '', value: fixtureFigures() }],
+      base_rev: 0,
+    }, runCtx(work))
+    expect(result).toMatchObject({ ok: true, revision: 1, figures_json: 'tool-new/figures.json' })
+    expect(result).not.toHaveProperty('history_path')
+  })
+
   it('支持 add/remove/replace/move/copy/test 与转义 JSON Pointer', () => {
     const input = { name: 'before', items: [1, 2], nested: { a: { 'x/y': 7 } } }
     const output = applyJsonPatch(input, [

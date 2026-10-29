@@ -1,328 +1,217 @@
-import {
-  createElement,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  type MouseEvent as ReactMouseEvent,
-  type ReactElement,
-} from 'react'
-import type { FigurePanel, FigureRecord, FiguresFile, ProjectSnapshot, ProjectStore, JsonPatch } from '../types.ts'
-import { isUpdateConflict } from '../types.ts'
-import { bboxStyle, DEFAULT_PAGE_SIZE, normalizeBBox, resizeBBox, type PageSize, type ResizeHandle } from './geometry.ts'
+import { createElement as h, useEffect, useId, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
+import type { BBox, FigureRecord, JsonPatch, ProjectStore } from '../types.ts'
 import { styles } from '../styles.ts'
+import { bboxStyle, drawWithinRegion, editWithinRegion, type PageSize, type ResizeHandle } from './geometry.ts'
+import { AddFigure } from './AddFigure.ts'
 
+export interface PageImage extends PageSize { readonly src: string }
 export interface FigureWorkbenchProps {
   readonly store: ProjectStore
   readonly onOpenResource?: (path: string) => void
+  readonly onFollowup?: (text: string) => void | Promise<void>
+  readonly loadPage?: (documentPath: string, page: number) => Promise<PageImage>
 }
 
-export function FigureWorkbench({ store, onOpenResource }: FigureWorkbenchProps): ReactElement {
-  const snapshot = useProjectSnapshot(store)
-  const [selectedPanel, setSelectedPanel] = useState<string | undefined>()
-  const [expanded, setExpanded] = useState(true)
-  const [modalFigureId, setModalFigureId] = useState<string | undefined>()
-  const [conflict, setConflict] = useState<string | undefined>()
+export function FigureWorkbench(props: FigureWorkbenchProps): ReactElement {
+  const { store } = props
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot)
+  const [error, setError] = useState<string>()
+  const [busy, setBusy] = useState(false)
+  const writing = useRef(false)
   const figures = snapshot.figures
-  if (figures === undefined) {
-    return createElement('div', { className: styles.content },
-      snapshot.error
-        ? createElement('div', { className: styles.error, role: 'alert' }, snapshot.error)
-        : createElement('div', { className: styles.card, role: 'status' }, '正在读取 figures.json…'),
-    )
-  }
-  if (figures.figures.length === 0) {
-    return createElement('div', { className: styles.content },
-      createElement('div', { className: styles.empty },
-        createElement('div', { className: styles.emptyIcon, 'aria-hidden': true }, '▧'),
-        createElement('strong', null, '还没有 Figure'),
-        createElement('p', { className: styles.subtitle }, '分析完成后，候选图源会写入 figures.json 并在这里出现。'),
-      ),
-    )
-  }
-  const update = async (patch: readonly JsonPatch[]) => {
-    setConflict(undefined)
-    const result = await store.updateFigures({ figures_json: projectFiguresPath(store), patch, base_rev: figures.revision })
-    if (isUpdateConflict(result)) {
-      setConflict(`figures.json 已被其他操作更新到 revision ${result.revision}。请重载后再调整，未覆盖对方修改。`)
+  async function update(patch: readonly JsonPatch[]): Promise<boolean> {
+    if (writing.current || !figures) return false
+    writing.current = true
+    setBusy(true)
+    setError(undefined)
+    try {
+      const result = await store.updateFigures({ figures_json: 'figures.json', patch, base_rev: figures.revision })
+      if (!result.ok) setError(`图源已更新到 revision ${result.revision}，请根据重载后的内容重试；本次修改未覆盖其他修改。`)
       await store.refresh()
-    }
+      return result.ok
+    } catch (cause) { setError(messageOf(cause)); return false }
+    finally { writing.current = false; setBusy(false) }
   }
-  const selected = selectedPanel === undefined ? undefined : findPanel(figures, selectedPanel)
-  const modalFigure = modalFigureId === undefined ? undefined : figures.figures.find(figure => figure.id === modalFigureId)
-  return createElement('div', { className: styles.root },
-    createElement('div', { className: styles.header },
-      createElement('div', null,
-        createElement('p', { className: styles.eyebrow }, 'Journal Club · 图源核对'),
-        createElement('h1', { className: styles.title }, '核对工作台'),
-        createElement('p', { className: styles.subtitle }, `${figures.figures.length} 个 Figure · revision ${figures.revision}`),
-      ),
-      createElement('button', {
-        className: styles.secondaryAction,
-        type: 'button',
-        onClick: () => void store.refresh(),
-      }, '刷新'),
-    ),
-    conflict ? createElement('div', { className: styles.conflict, role: 'alert' }, conflict) : null,
-    createElement('div', { className: styles.content },
-      createElement('div', { className: styles.stack },
-        figures.figures.map((figure, index) => createElement(FigureCard, {
-          key: figure.id,
-          figure,
-          figureIndex: index,
-          changed: snapshot.changedFigureIds.includes(figure.id),
-          selectedPanelId: selected?.figure.id === figure.id ? selected.panel.id : undefined,
-          store,
-          expanded,
-          documentPath: figures.documents.find(document => document.id === figure.regions[0]?.document)?.path,
-          onToggleCaption: () => setExpanded(value => !value),
-          onSelectPanel: panelId => setSelectedPanel(panelId),
-          onResize: (panelIndex, bbox) => void update([{ op: 'replace', path: `/figures/${index}/panels/${panelIndex}/bbox`, value: [...bbox] }]),
-          onStatus: status => void update([{ op: 'replace', path: `/figures/${index}/status`, value: status }]),
-          onOpenResource,
-          onOpenModal: () => setModalFigureId(figure.id),
-        })),
-      ),
-    ),
-    selected ? createElement(SelectedPanelDetails, { selected, store, onOpenResource }) : null,
-    modalFigure ? createElement(FigureModal, {
-      figure: modalFigure,
-      store,
-      selectedPanelId: selectedPanelIdForFigure(selected, modalFigure.id),
-      onSelectPanel: panelId => setSelectedPanel(panelId),
-      onClose: () => setModalFigureId(undefined),
-    }) : null,
-  )
+  async function followup(text: string): Promise<void> {
+    try { await props.onFollowup?.(text) } catch (cause) { setError(messageOf(cause)) }
+  }
+  if (!figures) return h('div', { className: styles.content }, snapshot.error ?? '正在读取 figures.json…')
+  const pending = figures.figures.filter(f => f.status === 'pending').length
+  const flagged = figures.figures.reduce((n, f) => n + f.panels.filter(p => p.flags.length > 0).length, 0)
+  return h('div', { className: styles.root },
+    h('div', { className: styles.header },
+      h('div', null, h('h1', { className: styles.title }, '图源核对'), h('p', { className: styles.subtitle }, `${figures.figures.length} 个 Figure · revision ${figures.revision}`)),
+      h('button', { type: 'button', className: styles.secondaryAction, onClick: () => void store.refresh() }, '刷新')),
+    error || snapshot.error ? h('div', { className: styles.error, role: 'alert' }, error ?? snapshot.error) : null,
+    h('div', { className: styles.content }, h('div', { className: styles.stack },
+      figures.figures.map((figure, index) => h(FigureCard, {
+        key: figure.id, figure, index, revision: figures.revision, busy, update,
+        changed: snapshot.changedFigureIds.includes(figure.id),
+        documentPaths: figures.documents,
+        loadPage: props.loadPage, onOpenResource: props.onOpenResource,
+        onFollowup: props.onFollowup ? followup : undefined,
+      })),
+      !figures.figures.length ? h('p', null, '还没有 Figure；可通过下方入口补充图源。') : null,
+      props.loadPage ? h(AddFigure, { documents: figures.documents, busy, loadPage: props.loadPage, update, onFollowup: props.onFollowup }) : null,
+      props.onFollowup ? h('div', { className: styles.card },
+        h('p', { className: styles.subtitle }, `${pending} 个 Figure 未查看，${flagged} 个 Panel 有疑点。确认将按当前图源继续。`),
+        h('div', { className: styles.inlineActions },
+          h('button', { type: 'button', className: styles.action, disabled: busy, onClick: () => void followup('/jc confirm figures') }, '确认图源，生成大纲'))) : null)))
 }
 
-function FigureCard(props: {
-  readonly figure: FigureRecord
-  readonly figureIndex: number
-  readonly changed: boolean
-  readonly selectedPanelId?: string
-  readonly store: ProjectStore
-  readonly documentPath?: string
-  readonly expanded: boolean
-  readonly onToggleCaption: () => void
-  readonly onSelectPanel: (id: string) => void
-  readonly onResize: (panelIndex: number, bbox: readonly [number, number, number, number]) => void
-  readonly onStatus: (status: FigureRecord['status']) => void
-  readonly onOpenResource?: (path: string) => void
-  readonly onOpenModal: () => void
-}): ReactElement {
+interface FigureCardProps {
+  figure: FigureRecord
+  index: number
+  revision: number
+  busy: boolean
+  changed: boolean
+  documentPaths: readonly { id: string; path: string; role: string }[]
+  update(patch: readonly JsonPatch[]): Promise<boolean>
+  loadPage?: FigureWorkbenchProps['loadPage']
+  onOpenResource?: FigureWorkbenchProps['onOpenResource']
+  onFollowup?: FigureWorkbenchProps['onFollowup']
+}
+
+function FigureCard(props: FigureCardProps): ReactElement {
   const { figure } = props
-  const region = figure.regions[0]
-  const page = pageForRegion(region?.bbox)
-  const [pageSrc, setPageSrc] = useState<string>()
-  useEffect(() => {
-    let active = true
-    if (region === undefined) return () => { active = false }
-    const path = pageAssetPath(props.documentPath ?? region.document, region.page)
-    void props.store.readAsset(path).then(src => {
-      if (active) setPageSrc(src)
-    }).catch(() => {
-      if (active) setPageSrc(undefined)
-    })
-    return () => { active = false }
-  }, [props.store, region?.document, region?.page])
-  return createElement('article', {
-    className: `${styles.figure} ${props.changed ? styles.figureChanged : ''}`,
-    'data-figure-id': figure.id,
-  },
-    createElement('div', { className: styles.figureHeader },
-      createElement('div', null,
-        createElement('div', { className: styles.figureLabel }, figure.label ?? figure.id),
-        createElement('div', { className: styles.figureMeta },
-          region ? `${region.document} · p.${region.page}` : '缺少页面区域',
-          figure.status === 'excluded' ? ' · 已排除' : '',
-        ),
-      ),
-      createElement('div', { className: styles.figureMeta },
-        figure.status === 'adjusted' ? createElement('span', { className: styles.badge }, '已调整') : null,
-        figure.panels.some(panel => panel.flags.length > 0) ? createElement('span', { className: styles.warningBadge }, `疑点 ${figure.panels.filter(panel => panel.flags.length > 0).length}`) : null,
-        props.changed ? createElement('span', { className: styles.changedBadge }, '刚刚变更') : null,
-      ),
-    ),
-    createElement('div', { className: styles.figureBody },
-      region ? createElement(PageCanvas, {
-        src: pageSrc,
-        page,
-        panels: figure.panels,
-        selectedPanelId: props.selectedPanelId,
-        onSelectPanel: props.onSelectPanel,
-        onResize: props.onResize,
-      }) : null,
-      createElement('div', { className: styles.panelsHeader },
-        createElement('strong', { className: styles.subtitle }, 'Panels'),
-        createElement('button', { className: styles.secondaryAction, type: 'button', onClick: props.onOpenModal }, '放大编辑'),
-      ),
-      createElement('div', { className: styles.panelChips },
-        figure.panels.map(panel => createElement('button', {
-          className: `${styles.panelChip} ${props.selectedPanelId === panel.id ? styles.panelChipSelected : ''}`,
-          key: panel.id,
-          type: 'button',
-          onClick: () => props.onSelectPanel(panel.id),
-        }, panel.label ?? 'whole-Panel', panel.flags.length > 0 ? ' ⚠' : '')),
-      ),
-      figure.caption ? createElement('details', { className: styles.caption, open: props.expanded },
-        createElement('summary', { onClick: props.onToggleCaption }, '图注'),
-        figure.caption.sentences.map((sentence, index) => createElement('span', {
-          className: `${styles.captionLine} ${figure.panels.some(panel => panel.id === props.selectedPanelId && panel.caption_refs.includes(index)) ? styles.captionLineSelected : ''}`,
-          key: `${figure.id}-caption-${index}`,
-        }, sentence)),
-      ) : null,
-      createElement('div', { className: styles.inlineActions },
-        createElement('button', { className: styles.secondaryAction, type: 'button', onClick: () => props.onStatus('viewed') }, '采纳本图'),
-        createElement('button', { className: styles.dangerAction, type: 'button', onClick: () => props.onStatus('excluded') }, '排除本图'),
-      ),
-    ),
-  )
-}
-
-/** Page image height cap in the sidebar; the stage keeps the page aspect ratio under it. */
-const PAGE_MAX_HEIGHT = 390
-
-function PageCanvas(props: {
-  readonly src?: string
-  readonly page: PageSize
-  readonly panels: readonly FigurePanel[]
-  readonly selectedPanelId?: string
-  readonly onSelectPanel: (id: string) => void
-  readonly onResize: (panelIndex: number, bbox: readonly [number, number, number, number]) => void
-}): ReactElement {
-  const frameRef = useRef<HTMLDivElement>(null)
-  const [drafts, setDrafts] = useState<Record<string, FigurePanel['bbox']>>({})
-  const [drag, setDrag] = useState<{ panelIndex: number; handle: ResizeHandle; startX: number; startY: number; bbox: FigurePanel['bbox'] }>()
-  useEffect(() => {
-    if (drag === undefined) return
-    const onMove = (event: PointerEvent) => {
-      const frame = frameRef.current
-      if (frame === null) return
-      const rect = frame.getBoundingClientRect()
-      const dx = (event.clientX - drag.startX) / rect.width * props.page.width
-      const dy = (event.clientY - drag.startY) / rect.height * props.page.height
-      const bbox = resizeBBox(drag.bbox, drag.handle, dx, dy, props.page)
-      setDrafts(current => ({ ...current, [props.panels[drag.panelIndex]?.id ?? '']: bbox }))
-    }
-    const onUp = () => {
-      const panel = props.panels[drag.panelIndex]
-      if (panel !== undefined) {
-        const bbox = drafts[panel.id]
-        if (bbox !== undefined) props.onResize(drag.panelIndex, bbox)
-      }
-      setDrag(undefined)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp, { once: true })
-    return () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-  }, [drag, drafts, props])
-  const ratio = props.page.width / props.page.height
-  const stageStyle: CSSProperties = { aspectRatio: `${props.page.width} / ${props.page.height}`, width: `min(100%, ${PAGE_MAX_HEIGHT * ratio}px)` }
-  return createElement('div', { className: styles.pageFrame },
-    createElement('div', { className: styles.pageStage, ref: frameRef, style: stageStyle },
-    props.src ? createElement('img', { alt: '论文页图', className: styles.pageImage, src: props.src }) : createElement('div', { className: styles.pagePlaceholder }, '页面底图暂不可用，请确认 pages/ 已生成。'),
-    props.panels.map((panel, panelIndex) => {
-      const bbox = drafts[panel.id] ?? panel.bbox
-      const style = bboxStyle(bbox, props.page) as CSSProperties
-      const selected = panel.id === props.selectedPanelId
-      return createElement('div', {
-        className: `${styles.panelBox} ${selected ? styles.panelBoxSelected : ''}`,
-        key: panel.id,
-        style,
-        title: panel.flags.length ? panel.flags.join('、') : undefined,
-        onClick: () => props.onSelectPanel(panel.id),
+  const [selectedId, setSelectedId] = useState<string>()
+  const [expanded, setExpanded] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [label, setLabel] = useState('')
+  const [confirm, setConfirm] = useState<'delete' | 'exclude'>()
+  const selectedIndex = figure.panels.findIndex(p => p.id === selectedId)
+  const selected = figure.panels[selectedIndex]
+  const root = `/figures/${props.index}`
+  const edit = (patch: readonly JsonPatch[]) => props.update([
+    ...patch,
+    { op: 'replace', path: `${root}/status`, value: 'adjusted' },
+    { op: 'replace', path: '/status', value: 'draft' },
+  ])
+  useEffect(() => { setLabel(selected?.label ?? '') }, [selected?.id, selected?.label])
+  const controls = h('div', { className: styles.inlineActions },
+    h('button', { type: 'button', className: styles.secondaryAction, disabled: props.busy, onClick: () => setAdding(v => !v) }, adding ? '取消添加' : '＋ 添加 Panel'),
+    h('button', { type: 'button', className: styles.secondaryAction, disabled: props.busy, onClick: () => void props.update([{ op: 'replace', path: `${root}/status`, value: 'viewed' }]) }, '采纳本图'),
+    h('button', { type: 'button', className: styles.dangerAction, disabled: props.busy, onClick: () => setConfirm('exclude') }, '排除本图'),
+    props.onFollowup ? h('button', { type: 'button', className: styles.secondaryAction, onClick: () => void props.onFollowup?.(`请重新识别 Figure ${figure.id} 的 Panel，保留人工调整并说明冲突，经 update_figures 写入。`) }, '重新识别') : null,
+    props.onFollowup ? h('button', { type: 'button', className: styles.secondaryAction, onClick: () => void props.onFollowup?.(`请从 .history 快照查找 Figure ${figure.id} 的自动结果并恢复该图，不覆盖其他 Figure。`) }, '恢复自动结果') : null)
+  const body = h('div', { className: styles.figureBody },
+    figure.regions.map((region, regionIndex) => h(RegionEditor, {
+      key: `${region.document}:${region.page}:${regionIndex}`, regionIndex,
+      documentPath: props.documentPaths.find(d => d.id === region.document)?.path ?? region.document,
+      pageNumber: region.page, figure, selectedId, revision: props.revision,
+      adding, disabled: props.busy, expanded, loadPage: props.loadPage,
+      onSelect: setSelectedId,
+      onChange: (index: number, bbox: BBox) => edit([
+        { op: 'replace', path: `${root}/panels/${index}/bbox`, value: [...bbox] },
+        { op: 'replace', path: `${root}/panels/${index}/origin`, value: 'manual' },
+      ]),
+      onAdd: async (bbox: BBox) => {
+        const id = `panel_${crypto.randomUUID()}`
+        if (await edit([{ op: 'add', path: `${root}/panels/-`, value: { id, label: null, region_index: regionIndex, bbox: [...bbox], caption_refs: [], flags: ['missing-caption'], origin: 'manual' } }])) {
+          setAdding(false); setSelectedId(id)
+        }
       },
-        createElement('button', { className: styles.panelTag, type: 'button', onClick: (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); props.onSelectPanel(panel.id) } }, panel.label ?? 'whole'),
-        selected ? (['nw', 'ne', 'sw', 'se'] as const).map(handle => createElement('button', {
-          className: `${styles.handle} ${handleClass(handle)}`,
-          key: handle,
-          type: 'button',
-          'aria-label': `调整 ${panel.label ?? panel.id} ${handle} 角`,
-          onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
-            event.stopPropagation()
-            event.preventDefault()
-            setDrag({ panelIndex, handle, startX: event.clientX, startY: event.clientY, bbox })
-          },
-        })) : null,
-      )
-    }),
-    ),
-  )
+    })),
+    controls,
+    adding ? h('p', { className: styles.subtitle }, '在页图上拖出新框，再填写标签；空标签表示整图。') : null,
+    h('div', { className: styles.panelChips }, figure.panels.map(panel => h('button', { key: panel.id, type: 'button', className: `${styles.panelChip} ${panel.id === selectedId ? styles.panelChipSelected : ''}`, onClick: () => setSelectedId(panel.id) }, panel.label ?? 'whole-Panel'))),
+    selected ? h('div', { className: styles.inlineActions },
+      h('label', null, '标签 ', h('input', { value: label, disabled: props.busy, 'aria-label': 'Panel 标签', onChange: (event: { target: { value: string } }) => setLabel(event.target.value), onBlur: () => {
+        if ((label || null) === selected.label) return
+        void edit([{ op: 'replace', path: `${root}/panels/${selectedIndex}/label`, value: label || null }, { op: 'replace', path: `${root}/panels/${selectedIndex}/flags`, value: [...new Set([...selected.flags, 'missing-caption'])] }, { op: 'replace', path: `${root}/panels/${selectedIndex}/origin`, value: 'manual' }])
+      } })),
+      h('button', { type: 'button', className: styles.dangerAction, disabled: props.busy, onClick: () => setConfirm('delete') }, '删除 Panel'),
+      selected.asset && props.onOpenResource ? h('button', { type: 'button', className: styles.secondaryAction, onClick: () => props.onOpenResource?.(selected.asset!) }, '打开正式裁切') : null,
+      h('span', { className: styles.subtitle }, selected.flags.includes('missing-caption') ? '图注关联待复核' : selected.flags.join('、'))) : null,
+    confirm ? h('div', { className: styles.card, role: 'alert' }, confirm === 'delete' ? '删除当前 Panel？下游引用需要复核。' : '排除本图？图源身份和图注仍将保留。',
+      h('button', { type: 'button', disabled: props.busy, onClick: () => {
+        if (confirm === 'delete' && selectedIndex >= 0) void edit([{ op: 'remove', path: `${root}/panels/${selectedIndex}` }])
+        else if (confirm === 'exclude') void props.update([{ op: 'replace', path: `${root}/status`, value: 'excluded' }])
+        setConfirm(undefined)
+      } }, '确认'), h('button', { type: 'button', onClick: () => setConfirm(undefined) }, '取消')) : null,
+    figure.caption ? h('details', { className: styles.caption }, h('summary', null, '图注'), figure.caption.sentences.map((sentence, index) => h('span', { key: index, className: `${styles.captionLine} ${selected?.caption_refs.includes(index) ? styles.captionLineSelected : ''}` }, sentence))) : null)
+  return h('article', { className: `${styles.figure} ${props.changed ? styles.figureChanged : ''}`, 'data-figure-id': figure.id },
+    h('div', { className: styles.figureHeader }, h('strong', null, figure.label ?? figure.id),
+      h('span', { className: styles.figureMeta }, ({ pending: '未查看', viewed: '已查看', adjusted: '已调整', excluded: '已排除' }[figure.status]), props.changed ? ' · 刚刚变更' : ''),
+      h('button', { type: 'button', className: styles.secondaryAction, onClick: () => setExpanded(true) }, '放大编辑')),
+    expanded ? h('div', { className: styles.modalBackdrop }, h('section', { className: styles.modal, role: 'dialog', 'aria-modal': true, 'aria-label': `${figure.label ?? figure.id} 放大编辑` },
+      h('button', { type: 'button', className: styles.secondaryAction, onClick: () => setExpanded(false) }, '关闭'), body)) : body)
 }
 
-function SelectedPanelDetails(props: { readonly selected: { figure: FigureRecord; panel: FigurePanel }; readonly store: ProjectStore; readonly onOpenResource?: (path: string) => void }): ReactElement {
-  const [asset, setAsset] = useState<string>()
+interface RegionEditorProps {
+  regionIndex: number; documentPath: string; pageNumber: number; figure: FigureRecord
+  selectedId?: string; revision: number; adding: boolean; disabled: boolean; expanded: boolean
+  loadPage?: FigureWorkbenchProps['loadPage']
+  onSelect(id: string): void
+  onChange(index: number, bbox: BBox): Promise<boolean>
+  onAdd(bbox: BBox): Promise<void>
+}
+interface Drag { index?: number; handle?: ResizeHandle; startX: number; startY: number; original: BBox; bbox: BBox }
+function RegionEditor(props: RegionEditorProps): ReactElement {
+  const previewClipId = useId()
+  const [image, setImage] = useState<PageImage>()
+  const [error, setError] = useState<string>()
+  const [draft, setDraft] = useState<Drag>()
+  const drag = useRef<Drag>()
+  const frame = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let active = true
-    if (props.selected.panel.asset === undefined) return () => { active = false }
-    void props.store.readAsset(props.selected.panel.asset).then(value => { if (active) setAsset(value) }).catch(() => { if (active) setAsset(undefined) })
+    drag.current = undefined; setDraft(undefined)
+    setImage(undefined); setError(undefined)
+    if (!props.loadPage) { setError('宿主尚未提供页图及页面尺寸。'); return }
+    void props.loadPage(props.documentPath, props.pageNumber).then(value => { if (active) setImage(value) }).catch(cause => { if (active) setError(messageOf(cause)) })
     return () => { active = false }
-  }, [props.store, props.selected.panel.asset])
-  return createElement('aside', { className: styles.card, 'aria-label': '当前 Panel' },
-    createElement('strong', null, `当前选中：${props.selected.panel.label ?? 'whole-Panel'}`),
-    createElement('p', { className: styles.subtitle }, props.selected.panel.flags.length ? `疑点：${props.selected.panel.flags.join('、')}` : '没有标记疑点。'),
-    asset ? createElement('img', { alt: 'Panel 裁切预览', className: styles.assetPreview, src: asset }) : null,
-    props.selected.panel.asset && props.onOpenResource ? createElement('button', { className: styles.secondaryAction, type: 'button', onClick: () => props.onOpenResource?.(props.selected.panel.asset as string) }, '打开裁切预览') : null,
-  )
-}
-
-function FigureModal(props: { readonly figure: FigureRecord; readonly store: ProjectStore; readonly selectedPanelId?: string; readonly onSelectPanel: (id: string) => void; readonly onClose: () => void }): ReactElement {
-  const region = props.figure.regions[0]
-  const [src, setSrc] = useState<string>()
-  useEffect(() => {
-    let active = true
-    if (region !== undefined) void props.store.readAsset(pageAssetPath(region.document, region.page)).then(value => { if (active) setSrc(value) }).catch(() => undefined)
-    return () => { active = false }
-  }, [props.store, region?.document, region?.page])
-  return createElement('div', { className: styles.modalBackdrop, role: 'presentation', onMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => { if (event.target === event.currentTarget) props.onClose() } },
-    createElement('section', { className: styles.modal, role: 'dialog', 'aria-modal': true, 'aria-label': `${props.figure.label ?? props.figure.id} 放大编辑` },
-      createElement('div', { className: styles.statusLine }, createElement('strong', null, props.figure.label ?? props.figure.id), createElement('button', { className: styles.secondaryAction, type: 'button', onClick: props.onClose }, '关闭')),
-      createElement('div', { className: styles.figureBody }, region ? createElement(PageCanvas, { src, page: pageForRegion(region.bbox), panels: props.figure.panels, selectedPanelId: props.selectedPanelId, onSelectPanel: props.onSelectPanel, onResize: () => undefined }) : null),
-    ),
-  )
-}
-
-function useProjectSnapshot(store: ProjectStore): ProjectSnapshot {
-  return useSyncExternalStoreCompat(store.subscribe, store.getSnapshot)
-}
-
-function useSyncExternalStoreCompat<T>(subscribe: (listener: () => void) => () => void, getSnapshot: () => T): T {
-  const [snapshot, setSnapshot] = useState(getSnapshot)
-  useEffect(() => subscribe(() => setSnapshot(getSnapshot())), [getSnapshot, subscribe])
-  return snapshot
-}
-
-function findPanel(figures: FiguresFile, panelId: string): { figure: FigureRecord; panel: FigurePanel } | undefined {
-  for (const figure of figures.figures) {
-    const panel = figure.panels.find(item => item.id === panelId)
-    if (panel !== undefined) return { figure, panel }
+  }, [props.loadPage, props.documentPath, props.pageNumber, props.revision])
+  function point(event: ReactPointerEvent): [number, number] {
+    const rect = frame.current!.getBoundingClientRect()
+    return [(event.clientX - rect.left) / rect.width * image!.width, (event.clientY - rect.top) / rect.height * image!.height]
   }
-  return undefined
+  function start(event: ReactPointerEvent, index?: number, handle?: ResizeHandle): void {
+    if (!image || props.disabled || (index === undefined && !props.adding)) return
+    event.stopPropagation(); event.preventDefault()
+    const [x, y] = point(event)
+    const original: BBox = index === undefined ? [x, y, x, y] : props.figure.panels[index]!.bbox
+    drag.current = { index, handle, startX: x, startY: y, original, bbox: original }
+    setDraft(drag.current)
+    frame.current!.setPointerCapture(event.pointerId)
+    if (index !== undefined) props.onSelect(props.figure.panels[index]!.id)
+  }
+  const selectedIndex = props.figure.panels.findIndex(p => p.id === props.selectedId && p.region_index === props.regionIndex)
+  const preview = draft?.index === selectedIndex ? draft.bbox : props.figure.panels[selectedIndex]?.bbox
+  if (!image) return h('p', { className: styles.subtitle }, error ?? '正在读取页图…')
+  return h('div', null,
+    h('p', { className: styles.subtitle }, `${props.documentPath} · p.${props.pageNumber}`),
+    h('div', { className: styles.pageFrame }, h('div', {
+      ref: frame, className: styles.pageStage,
+      style: { aspectRatio: `${image.width}/${image.height}`, width: `min(100%, ${(props.expanded ? 750 : 390) * image.width / image.height}px)`, touchAction: 'none' },
+      onPointerDown: (event: ReactPointerEvent) => start(event),
+      onPointerMove: (event: ReactPointerEvent) => {
+        const current = drag.current
+        if (!current) return
+        const [x, y] = point(event)
+        const region = props.figure.regions[props.regionIndex]!.bbox
+        const bbox = current.index === undefined ? drawWithinRegion([current.startX, current.startY, x, y], region)
+          : editWithinRegion(current.original, region, x - current.startX, y - current.startY, current.handle)
+        drag.current = { ...current, bbox }; setDraft(drag.current)
+      },
+      onPointerUp: () => {
+        const current = drag.current
+        drag.current = undefined; setDraft(undefined)
+        if (!current) return
+        if (current.index === undefined) { if (current.bbox[2] - current.bbox[0] >= 2 && current.bbox[3] - current.bbox[1] >= 2) void props.onAdd(current.bbox) }
+        else if (JSON.stringify(current.original) !== JSON.stringify(current.bbox)) void props.onChange(current.index, current.bbox)
+      },
+      onPointerCancel: () => { drag.current = undefined; setDraft(undefined) },
+    }, h('img', { src: image.src, alt: '论文页图', className: styles.pageImage, draggable: false }),
+    props.figure.panels.map((panel, index) => panel.region_index !== props.regionIndex ? null : h('div', {
+      key: panel.id, className: `${styles.panelBox} ${panel.id === props.selectedId ? styles.panelBoxSelected : ''}`,
+      style: { ...bboxStyle(draft?.index === index ? draft.bbox : panel.bbox, image), pointerEvents: props.adding ? 'none' : undefined }, title: panel.flags.join('、'),
+      onPointerDown: (event: ReactPointerEvent) => start(event, index),
+    }, h('span', { className: styles.panelTag }, panel.label ?? 'whole'),
+    panel.id === props.selectedId ? (['nw', 'ne', 'sw', 'se'] as const).map(handle => h('button', { key: handle, type: 'button', className: `${styles.handle} ${styles[`handle${handle[0]!.toUpperCase()}${handle[1]}` as keyof typeof styles]}`, 'aria-label': `调整 ${panel.label ?? panel.id} ${handle} 角`, onPointerDown: (event: ReactPointerEvent) => start(event, index, handle) })) : null)),
+    draft?.index === undefined && draft ? h('div', { className: styles.panelBox, style: bboxStyle(draft.bbox, image) }) : null)),
+    preview ? h('svg', { viewBox: `${preview[0]} ${preview[1]} ${preview[2] - preview[0]} ${preview[3] - preview[1]}`, role: 'img', 'aria-label': '当前选框裁切预览', style: { display: 'block', maxHeight: 200, width: '100%', overflow: 'hidden' } },
+      h('defs', null, h('clipPath', { id: previewClipId, clipPathUnits: 'userSpaceOnUse' }, h('rect', { x: preview[0], y: preview[1], width: preview[2] - preview[0], height: preview[3] - preview[1] }))),
+      h('image', { href: image.src, width: image.width, height: image.height, clipPath: 'url(#' + previewClipId + ')' })) : null)
 }
-
-function selectedPanelIdForFigure(selected: { figure: FigureRecord; panel: FigurePanel } | undefined, figureId: string): string | undefined {
-  return selected?.figure.id === figureId ? selected.panel.id : undefined
-}
-
-function pageForRegion(bbox: readonly [number, number, number, number] | undefined): PageSize {
-  if (bbox === undefined) return DEFAULT_PAGE_SIZE
-  return { width: Math.max(DEFAULT_PAGE_SIZE.width, bbox[2]), height: Math.max(DEFAULT_PAGE_SIZE.height, bbox[3]) }
-}
-
-function pageAssetPath(document: string, page: number): string {
-  const stem = document.split(/[\\/]/u).pop()?.replace(/\.[^.]+$/u, '').replace(/[^A-Za-z0-9._-]+/gu, '_') || 'doc'
-  return `pages/${stem}-${String(page).padStart(3, '0')}.png`
-}
-
-function handleClass(handle: ResizeHandle): string {
-  const first = handle.charAt(0).toUpperCase()
-  return `handle${first}${handle.slice(1)}`
-}
-
-function projectFiguresPath(_store: ProjectStore): string {
-  return 'figures.json'
-}
+function messageOf(error: unknown): string { return error instanceof Error ? error.message : String(error) }

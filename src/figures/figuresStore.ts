@@ -30,7 +30,7 @@ export interface UpdateFiguresSuccess {
   readonly conflict: false
   readonly revision: number
   readonly figures: FiguresJson
-  readonly historyPath: string
+  readonly historyPath?: string
 }
 
 export interface UpdateFiguresConflict {
@@ -390,6 +390,7 @@ export class FiguresStore {
     return queueFor(canonicalPath, async () => {
       throwIfAborted(options.signal)
       const lockPath = `${canonicalPath}.lock`
+      await mkdir(dirname(canonicalPath), { recursive: true })
       const lock = await acquireLock(
         lockPath,
         options.lockTimeoutMs ?? this.defaults.lockTimeoutMs ?? 10_000,
@@ -398,8 +399,18 @@ export class FiguresStore {
       )
       try {
         throwIfAborted(options.signal)
-        const raw = await readFile(canonicalPath, 'utf8')
-        const current = parseFiguresJson(raw, canonicalPath)
+        let raw: string | undefined
+        try {
+          raw = await readFile(canonicalPath, 'utf8')
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+          if (baseRev !== 0) throw new FiguresPatchError('figures.json 不存在，首次创建必须使用 base_rev=0')
+        }
+        // The empty value exists only inside the lock; the completed patch must
+        // satisfy the full schema before anything is persisted.
+        const current: FiguresJson = raw === undefined
+          ? { version: 1, status: 'draft', revision: 0, documents: [], figures: [] }
+          : parseFiguresJson(raw, canonicalPath)
         if (current.revision !== baseRev) {
           return { ok: false, conflict: true, revision: current.revision, current }
         }
@@ -413,11 +424,11 @@ export class FiguresStore {
         validateFiguresJson(next)
         throwIfAborted(options.signal)
 
-        const historyPath = await writeSnapshot(canonicalPath, raw, current.revision)
+        const historyPath = raw === undefined ? undefined : await writeSnapshot(canonicalPath, raw, current.revision)
         try {
           await atomicWriteFile(canonicalPath, `${JSON.stringify(next, null, 2)}\n`)
         } catch (error) {
-          await rm(historyPath, { force: true }).catch(() => {})
+          if (historyPath !== undefined) await rm(historyPath, { force: true }).catch(() => {})
           throw error
         }
         await pruneSnapshots(canonicalPath, options.historyLimit ?? this.defaults.historyLimit ?? 10).catch(() => {})

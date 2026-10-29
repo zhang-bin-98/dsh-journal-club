@@ -1,6 +1,6 @@
 # 文档索引
 
-> dsh-journal-club 权威文档入口。M1–M3 与 M5 核心实现完成，M4 client 工作台代码已实现；真实 dsh/browser/PPTX 与完整三篇论文端到端验收仍未完成，见 [架构设计 §7](architecture/架构设计.md) 和 [决策记录 D16](decisions.md)。
+> dsh-journal-club 权威文档入口。五个工具、skill 与文件链、工作台 host/client 集成及流程入口已实现；85 项回归、桌面拖框保存、聊天卡片与 PPTX 本地工具链已有本次证据。完整三篇论文及新论文冷启动验收尚未完成。详见 [开发验收](verification/development-acceptance.md)、[PPTX 集成](verification/pptx-integration.md)、[D19](decisions.md#d19-文件链与宿主集成收口2026-10-29) 和 [架构 §7](architecture/架构设计.md#7-分阶段实施计划)。
 
 ## 阅读顺序
 

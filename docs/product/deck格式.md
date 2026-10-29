@@ -19,6 +19,8 @@
 - 装了 dsh-ppt-maker 的用户还获得右侧栏 PPT 工作台的视觉微调能力——正好补 v1「不做视觉级编辑」的缺口。
 - 该编排写入 skill（推荐路径 + dsh-slides/手动 PowerPoint 备选），使用说明注明。
 
+**外部接口核实（2026-10-29）**：已只读检查 npm `dsh-ppt-maker@1.0.0` 发布包：create 接收 dir，edit 接收 dir/ops/baseRevision，check 接收 dir/pages/ai，export 接收 dir/out/skipCheck；页面 notes 会写入 PPTX 讲者备注。这是接口核实，不是本项目真实导出验收，使用时仍读目标宿主工具 schema。
+
 ## 2. 格式规范
 
 ### 2.1 文件与引用
@@ -118,6 +120,8 @@ generated: 2026-10-26
 发现覆盖等语义检查不归程序（自由文本无发现 ID）——由 agent 在确认前对照 analysis.md 发现清单自查（见产品设计 4.6 分层）。
 
 ## 5. PPTX 对接路径（写入 skill 的推荐编排）
+
+完整流程开始时创建空 `groups.json`（`{"version":1,"groups":[]}`，仅不存在时创建）。无拼图也使用实际文件摘要；已有图组不可覆盖为空。
 
 0. **渲染门槛（确认点 3）**：PPTX 渲染是分钟级昂贵操作，仅在用户确认 deck.md 内容与拼图效果后启动——用户在秒级 markdown 预览中核对每页内容、讲稿、组合图；拼图不满意 → 对话重拼（`compose_panels` 秒级重跑，组合图文件名稳定，deck.md 引用不变自动刷新）。确认动作写入 jc.md confirmations（deck digest + groups digest——文件或图组变更即确认失效）。skill 约定 agent 不跳过该确认直接渲染（用户显式说"直接渲染"除外）。
 1. 检测 dsh-ppt-maker 可用 → agent 读 deck.md + 图片 → `ppt_create`（学术主题）→ `ppt_edit` 逐页建元素（文字原生、图片引用、布局按 `layout` 提示）→ 讲稿写入每页备注 → `ppt_check` → `ppt_export`；用户可在其右侧栏工作台继续视觉微调。

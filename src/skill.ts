@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 
 type SkillRuntime = Context & {
@@ -51,7 +52,7 @@ export function registerJournalClubSkill(ctx: Context): void {
       name: skill.name,
       description: skill.description,
       source: 'bundled',
-      content: skill.content,
+      content: `Skill directory: ${fileURLToPath(new URL('.', SKILL_URL))}\nProject helper: ${fileURLToPath(new URL('../lib/project.js', import.meta.url))}\n\n${skill.content}`,
       invocation: { modelInvocable: true, userInvocable: true },
     })
   })

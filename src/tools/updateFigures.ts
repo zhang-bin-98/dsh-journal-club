@@ -14,7 +14,8 @@ export function registerUpdateFigures(ctx: Context): void {
       name: 'update_figures',
       description:
         '以 RFC6902 JSON Patch 更新 figures.json。必须提供读取时的 base_rev；revision 由服务统一递增，' +
-        '成功写入前保留 .history 快照并原子替换。base_rev 过期时返回冲突与当前 revision，原文件不变。',
+        '已有文件写入前保留 .history 快照并原子替换。首次创建使用 base_rev=0，从空 documents/figures 数组应用 patch，' +
+        'patch 必须补齐至少一个 document；首次成功 revision=1，不生成虚构快照。base_rev 过期时返回冲突与当前 revision，原文件不变。',
       parameters: {
         figures_json: {
           type: 'string',
@@ -74,7 +75,7 @@ export function registerUpdateFigures(ctx: Context): void {
           conflict: false,
           figures_json: displayWorkspacePath(absPath, workspaceCwd(exec)),
           revision: result.revision,
-          history_path: displayWorkspacePath(result.historyPath, workspaceCwd(exec)),
+          ...(result.historyPath === undefined ? {} : { history_path: displayWorkspacePath(result.historyPath, workspaceCwd(exec)) }),
           figures: result.figures,
         } as unknown as import('@deepseek-ai/dsh-util-values').JsonValue
       },
