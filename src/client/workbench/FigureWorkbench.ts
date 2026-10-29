@@ -19,13 +19,13 @@ export function FigureWorkbench(props: FigureWorkbenchProps): ReactElement {
   const [busy, setBusy] = useState(false)
   const writing = useRef(false)
   const figures = snapshot.figures
-  async function update(patch: readonly JsonPatch[]): Promise<boolean> {
+  async function update(patch: readonly JsonPatch[], baseRev = figures?.revision): Promise<boolean> {
     if (writing.current || !figures) return false
     writing.current = true
     setBusy(true)
     setError(undefined)
     try {
-      const result = await store.updateFigures({ figures_json: 'figures.json', patch, base_rev: figures.revision })
+      const result = await store.updateFigures({ figures_json: 'figures.json', patch, base_rev: baseRev ?? figures.revision })
       if (!result.ok) setError(`图源已更新到 revision ${result.revision}，请根据重载后的内容重试；本次修改未覆盖其他修改。`)
       await store.refresh()
       return result.ok
@@ -45,7 +45,7 @@ export function FigureWorkbench(props: FigureWorkbenchProps): ReactElement {
     error || snapshot.error ? h('div', { className: styles.error, role: 'alert' }, error ?? snapshot.error) : null,
     h('div', { className: styles.content }, h('div', { className: styles.stack },
       figures.figures.map((figure, index) => h(FigureCard, {
-        key: figure.id, figure, index, revision: figures.revision, busy, update,
+        key: figure.id, figure, index, revision: figures.revision, busy, update, error,
         changed: snapshot.changedFigureIds.includes(figure.id),
         documentPaths: figures.documents,
         loadPage: props.loadPage, onOpenResource: props.onOpenResource,
@@ -65,8 +65,9 @@ interface FigureCardProps {
   revision: number
   busy: boolean
   changed: boolean
+  error?: string
   documentPaths: readonly { id: string; path: string; role: string }[]
-  update(patch: readonly JsonPatch[]): Promise<boolean>
+  update(patch: readonly JsonPatch[], baseRev?: number): Promise<boolean>
   loadPage?: FigureWorkbenchProps['loadPage']
   onOpenResource?: FigureWorkbenchProps['onOpenResource']
   onFollowup?: FigureWorkbenchProps['onFollowup']
@@ -77,8 +78,7 @@ function FigureCard(props: FigureCardProps): ReactElement {
   const [selectedId, setSelectedId] = useState<string>()
   const [expanded, setExpanded] = useState(false)
   const [adding, setAdding] = useState(false)
-  const [label, setLabel] = useState('')
-  const [confirm, setConfirm] = useState<'delete' | 'exclude'>()
+  const [confirm, setConfirm] = useState<{ kind: 'delete' | 'exclude'; commit(): Promise<boolean> }>()
   const selectedIndex = figure.panels.findIndex(p => p.id === selectedId)
   const selected = figure.panels[selectedIndex]
   const root = `/figures/${props.index}`
@@ -86,12 +86,11 @@ function FigureCard(props: FigureCardProps): ReactElement {
     ...patch,
     { op: 'replace', path: `${root}/status`, value: 'adjusted' },
     { op: 'replace', path: '/status', value: 'draft' },
-  ])
-  useEffect(() => { setLabel(selected?.label ?? '') }, [selected?.id, selected?.label])
+  ], props.revision)
   const controls = h('div', { className: styles.inlineActions },
     h('button', { type: 'button', className: styles.secondaryAction, disabled: props.busy, onClick: () => setAdding(v => !v) }, adding ? '取消添加' : '＋ 添加 Panel'),
     h('button', { type: 'button', className: styles.secondaryAction, disabled: props.busy, onClick: () => void props.update([{ op: 'replace', path: `${root}/status`, value: 'viewed' }]) }, '采纳本图'),
-    h('button', { type: 'button', className: styles.dangerAction, disabled: props.busy, onClick: () => setConfirm('exclude') }, '排除本图'),
+    h('button', { type: 'button', className: styles.dangerAction, disabled: props.busy, onClick: () => setConfirm({ kind: 'exclude', commit: () => props.update([{ op: 'replace', path: `${root}/status`, value: 'excluded' }], props.revision) }) }, '排除本图'),
     props.onFollowup ? h('button', { type: 'button', className: styles.secondaryAction, onClick: () => void props.onFollowup?.(`请重新识别 Figure ${figure.id} 的 Panel，保留人工调整并说明冲突，经 update_figures 写入。`) }, '重新识别') : null,
     props.onFollowup ? h('button', { type: 'button', className: styles.secondaryAction, onClick: () => void props.onFollowup?.(`请从 .history 快照查找 Figure ${figure.id} 的自动结果并恢复该图，不覆盖其他 Figure。`) }, '恢复自动结果') : null)
   const body = h('div', { className: styles.figureBody },
@@ -112,21 +111,21 @@ function FigureCard(props: FigureCardProps): ReactElement {
         }
       },
     })),
+    expanded && props.error ? h('div', { className: styles.error, role: 'alert' }, props.error) : null,
     controls,
     adding ? h('p', { className: styles.subtitle }, '在页图上拖出新框，再填写标签；空标签表示整图。') : null,
     h('div', { className: styles.panelChips }, figure.panels.map(panel => h('button', { key: panel.id, type: 'button', className: `${styles.panelChip} ${panel.id === selectedId ? styles.panelChipSelected : ''}`, onClick: () => setSelectedId(panel.id) }, panel.label ?? 'whole-Panel'))),
     selected ? h('div', { className: styles.inlineActions },
-      h('label', null, '标签 ', h('input', { value: label, disabled: props.busy, 'aria-label': 'Panel 标签', onChange: (event: { target: { value: string } }) => setLabel(event.target.value), onBlur: () => {
-        if ((label || null) === selected.label) return
-        void edit([{ op: 'replace', path: `${root}/panels/${selectedIndex}/label`, value: label || null }, { op: 'replace', path: `${root}/panels/${selectedIndex}/flags`, value: [...new Set([...selected.flags, 'missing-caption'])] }, { op: 'replace', path: `${root}/panels/${selectedIndex}/origin`, value: 'manual' }])
-      } })),
-      h('button', { type: 'button', className: styles.dangerAction, disabled: props.busy, onClick: () => setConfirm('delete') }, '删除 Panel'),
+      h(PanelLabel, { key: selected.id, label: selected.label, disabled: props.busy, commit: (label: string) => {
+        if ((label || null) === selected.label) return Promise.resolve(true)
+        return edit([{ op: 'replace', path: `${root}/panels/${selectedIndex}/label`, value: label || null }, { op: 'replace', path: `${root}/panels/${selectedIndex}/flags`, value: [...new Set([...selected.flags, 'missing-caption'])] }, { op: 'replace', path: `${root}/panels/${selectedIndex}/origin`, value: 'manual' }])
+      } }),
+      h('button', { type: 'button', className: styles.dangerAction, disabled: props.busy, onClick: () => setConfirm({ kind: 'delete', commit: () => edit([{ op: 'remove', path: `${root}/panels/${selectedIndex}` }]) }) }, '删除 Panel'),
       selected.asset && props.onOpenResource ? h('button', { type: 'button', className: styles.secondaryAction, onClick: () => props.onOpenResource?.(selected.asset!) }, '打开正式裁切') : null,
       h('span', { className: styles.subtitle }, selected.flags.includes('missing-caption') ? '图注关联待复核' : selected.flags.join('、'))) : null,
-    confirm ? h('div', { className: styles.card, role: 'alert' }, confirm === 'delete' ? '删除当前 Panel？下游引用需要复核。' : '排除本图？图源身份和图注仍将保留。',
+    confirm ? h('div', { className: styles.card, role: 'alert' }, confirm.kind === 'delete' ? '删除当前 Panel？下游引用需要复核。' : '排除本图？图源身份和图注仍将保留。',
       h('button', { type: 'button', disabled: props.busy, onClick: () => {
-        if (confirm === 'delete' && selectedIndex >= 0) void edit([{ op: 'remove', path: `${root}/panels/${selectedIndex}` }])
-        else if (confirm === 'exclude') void props.update([{ op: 'replace', path: `${root}/status`, value: 'excluded' }])
+        void confirm.commit()
         setConfirm(undefined)
       } }, '确认'), h('button', { type: 'button', onClick: () => setConfirm(undefined) }, '取消')) : null,
     figure.caption ? h('details', { className: styles.caption }, h('summary', null, '图注'), figure.caption.sentences.map((sentence, index) => h('span', { key: index, className: `${styles.captionLine} ${selected?.caption_refs.includes(index) ? styles.captionLineSelected : ''}` }, sentence))) : null)
@@ -135,7 +134,20 @@ function FigureCard(props: FigureCardProps): ReactElement {
       h('span', { className: styles.figureMeta }, ({ pending: '未查看', viewed: '已查看', adjusted: '已调整', excluded: '已排除' }[figure.status]), props.changed ? ' · 刚刚变更' : ''),
       h('button', { type: 'button', className: styles.secondaryAction, onClick: () => setExpanded(true) }, '放大编辑')),
     expanded ? h('div', { className: styles.modalBackdrop }, h('section', { className: styles.modal, role: 'dialog', 'aria-modal': true, 'aria-label': `${figure.label ?? figure.id} 放大编辑` },
-      h('button', { type: 'button', className: styles.secondaryAction, onClick: () => setExpanded(false) }, '关闭'), body)) : body)
+      h('button', { type: 'button', className: styles.secondaryAction, onClick: () => setExpanded(false) }, '关闭'),
+      body)) : body)
+}
+
+/** 未提交输入只存于当前控件；文件监听不能替换它，提交使用开始编辑时的 CAS 版本。 */
+function PanelLabel(props: { label: string | null; disabled: boolean; commit(label: string): Promise<boolean> }): ReactElement {
+  const [draft, setDraft] = useState<string>()
+  const commit = useRef(props.commit)
+  return h('label', null, '标签 ', h('input', {
+    value: draft ?? props.label ?? '', disabled: props.disabled, 'aria-label': 'Panel 标签',
+    onFocus: () => { commit.current = props.commit },
+    onChange: (event: { target: { value: string } }) => setDraft(event.target.value),
+    onBlur: async () => { if (draft !== undefined && await commit.current(draft)) setDraft(undefined) },
+  }))
 }
 
 interface RegionEditorProps {
@@ -146,7 +158,7 @@ interface RegionEditorProps {
   onChange(index: number, bbox: BBox): Promise<boolean>
   onAdd(bbox: BBox): Promise<void>
 }
-interface Drag { index?: number; handle?: ResizeHandle; startX: number; startY: number; original: BBox; bbox: BBox }
+interface Drag { index?: number; handle?: ResizeHandle; startX: number; startY: number; original: BBox; bbox: BBox; commit(bbox: BBox): void }
 function RegionEditor(props: RegionEditorProps): ReactElement {
   const previewClipId = useId()
   const [image, setImage] = useState<PageImage>()
@@ -155,9 +167,11 @@ function RegionEditor(props: RegionEditorProps): ReactElement {
   const drag = useRef<Drag>()
   const frame = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    let active = true
     drag.current = undefined; setDraft(undefined)
     setImage(undefined); setError(undefined)
+  }, [props.documentPath, props.pageNumber])
+  useEffect(() => {
+    let active = true
     if (!props.loadPage) { setError('宿主尚未提供页图及页面尺寸。'); return }
     void props.loadPage(props.documentPath, props.pageNumber).then(value => { if (active) setImage(value) }).catch(cause => { if (active) setError(messageOf(cause)) })
     return () => { active = false }
@@ -171,7 +185,10 @@ function RegionEditor(props: RegionEditorProps): ReactElement {
     event.stopPropagation(); event.preventDefault()
     const [x, y] = point(event)
     const original: BBox = index === undefined ? [x, y, x, y] : props.figure.panels[index]!.bbox
-    drag.current = { index, handle, startX: x, startY: y, original, bbox: original }
+    drag.current = { index, handle, startX: x, startY: y, original, bbox: original, commit: bbox => {
+      if (index === undefined) { if (bbox[2] - bbox[0] >= 2 && bbox[3] - bbox[1] >= 2) void props.onAdd(bbox) }
+      else if (JSON.stringify(original) !== JSON.stringify(bbox)) void props.onChange(index, bbox)
+    } }
     setDraft(drag.current)
     frame.current!.setPointerCapture(event.pointerId)
     if (index !== undefined) props.onSelect(props.figure.panels[index]!.id)
@@ -198,8 +215,7 @@ function RegionEditor(props: RegionEditorProps): ReactElement {
         const current = drag.current
         drag.current = undefined; setDraft(undefined)
         if (!current) return
-        if (current.index === undefined) { if (current.bbox[2] - current.bbox[0] >= 2 && current.bbox[3] - current.bbox[1] >= 2) void props.onAdd(current.bbox) }
-        else if (JSON.stringify(current.original) !== JSON.stringify(current.bbox)) void props.onChange(current.index, current.bbox)
+        current.commit(current.bbox)
       },
       onPointerCancel: () => { drag.current = undefined; setDraft(undefined) },
     }, h('img', { src: image.src, alt: '论文页图', className: styles.pageImage, draggable: false }),

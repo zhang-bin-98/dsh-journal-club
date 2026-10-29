@@ -1,6 +1,6 @@
 # 文档索引
 
-> dsh-journal-club 权威文档入口。五个工具、skill 与文件链、工作台 host/client 集成及流程入口已实现；原 85 项回归、桌面拖框保存、聊天卡片与 PPTX 本地工具链已有证据。后续独立工作区已修复确认按钮并完成单篇 24 页导出，备注与图片核验通过，六页 PowerPoint 抽查已执行；图源残影、修订后冷启动和完整三篇验收仍未收口。详见 [开发验收](verification/development-acceptance.md)、[M6 冷启动验收](verification/m6-cold-start.md)、[PPTX 集成](verification/pptx-integration.md) 和 [架构 §7](architecture/架构设计.md#7-分阶段实施计划)。
+> dsh-journal-club 权威文档入口。五个工具、skill 与文件链、工作台 host/client 集成及流程入口已实现。90 项回归通过；独立工作区已验证并发编辑保护、删除/排除、缺页恢复与手工补图回填。单篇图源完成逐边修正和整图兜底，24 页新版 PPTX 的备注与图片核验通过，已逐页目视检查；脚注已定向复验，三篇完整冷启动仍未收口，M6 未完成。详见 [开发验收](verification/development-acceptance.md)、[M6 冷启动验收](verification/m6-cold-start.md)、[PPTX 集成](verification/pptx-integration.md) 和 [架构 §7](architecture/架构设计.md#7-分阶段实施计划)。
 
 ## 阅读顺序
 

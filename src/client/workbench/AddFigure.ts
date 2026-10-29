@@ -100,7 +100,7 @@ export function AddFigure(props: Props): ReactElement {
           onPointerUp: () => { start.current = undefined },
           onPointerCancel: () => { start.current = undefined; setBbox(undefined) },
         }, h('img', { src: image.src, className: styles.pageImage, alt: '补图页图：拖选整图范围', draggable: false }),
-        bbox ? h('div', { className: styles.panelBox, style: { ...bboxStyle(bbox, image), pointerEvents: 'none' } }) : null)) : h('p', null, '正在读取页图…'),
+        bbox ? h('div', { className: styles.panelBox, style: { ...bboxStyle(bbox, image), pointerEvents: 'none' } }) : null)) : error ? null : h('p', null, '正在读取页图…'),
       saved ? h('div', null, h('p', null, '人工整图框已保存，图注关联待复核。'), props.onFollowup ? h('button', { type: 'button', disabled: sending, onClick: () => void complete(saved) }, '重试补充 Panel 与图注') : null,
         h('button', { type: 'button', disabled: sending, onClick: () => { setSaved(undefined); setBbox(undefined); setLabel(''); id.current = undefined } }, '继续补图')) :
         h('button', { type: 'button', className: styles.action, disabled: disabled || !bbox || !image, onClick: () => void save() }, '保存整图并补充图注')) : null)
