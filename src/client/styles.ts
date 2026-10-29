@@ -57,7 +57,8 @@ const css = `
 .jc-changedBadge { border-color: color-mix(in srgb, var(--jc-accent) 45%, var(--jc-border)); color: var(--jc-accent); }
 .jc-figureBody { display: grid; gap: 10px; padding: 10px; }
 .jc-pageFrame { background: var(--jc-surface-raised); min-height: 180px; overflow: hidden; position: relative; }
-.jc-pageImage { display: block; height: auto; max-height: 390px; object-fit: contain; width: 100%; }
+.jc-pageStage { margin: 0 auto; max-width: 100%; position: relative; }
+.jc-pageImage { display: block; height: 100%; width: 100%; }
 .jc-pagePlaceholder { align-items: center; color: var(--jc-muted); display: flex; font-size: 11px; inset: 0; justify-content: center; min-height: 180px; padding: 12px; position: absolute; text-align: center; }
 .jc-panelBox { background: color-mix(in srgb, var(--jc-accent) 10%, transparent); border: 2px solid var(--jc-accent); box-sizing: border-box; cursor: pointer; position: absolute; }
 .jc-panelBoxSelected { border-color: var(--jc-warning); box-shadow: 0 0 0 2px color-mix(in srgb, var(--jc-warning) 30%, transparent); }
@@ -124,6 +125,7 @@ export const styles = {
   changedBadge: 'jc-changedBadge',
   figureBody: 'jc-figureBody',
   pageFrame: 'jc-pageFrame',
+  pageStage: 'jc-pageStage',
   pageImage: 'jc-pageImage',
   pagePlaceholder: 'jc-pagePlaceholder',
   panelBox: 'jc-panelBox',

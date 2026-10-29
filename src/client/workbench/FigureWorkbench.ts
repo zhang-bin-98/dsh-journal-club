@@ -180,6 +180,9 @@ function FigureCard(props: {
   )
 }
 
+/** Page image height cap in the sidebar; the stage keeps the page aspect ratio under it. */
+const PAGE_MAX_HEIGHT = 390
+
 function PageCanvas(props: {
   readonly src?: string
   readonly page: PageSize
@@ -217,7 +220,10 @@ function PageCanvas(props: {
       window.removeEventListener('pointerup', onUp)
     }
   }, [drag, drafts, props])
-  return createElement('div', { className: styles.pageFrame, ref: frameRef },
+  const ratio = props.page.width / props.page.height
+  const stageStyle: CSSProperties = { aspectRatio: `${props.page.width} / ${props.page.height}`, width: `min(100%, ${PAGE_MAX_HEIGHT * ratio}px)` }
+  return createElement('div', { className: styles.pageFrame },
+    createElement('div', { className: styles.pageStage, ref: frameRef, style: stageStyle },
     props.src ? createElement('img', { alt: '论文页图', className: styles.pageImage, src: props.src }) : createElement('div', { className: styles.pagePlaceholder }, '页面底图暂不可用，请确认 pages/ 已生成。'),
     props.panels.map((panel, panelIndex) => {
       const bbox = drafts[panel.id] ?? panel.bbox
@@ -244,6 +250,7 @@ function PageCanvas(props: {
         })) : null,
       )
     }),
+    ),
   )
 }
 
