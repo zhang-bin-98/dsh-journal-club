@@ -152,7 +152,7 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 在本机 DeepSeek Harness 桌面版（runtime 0.2.1-rc.3）上以 `dsh plugin --profile desktop add <本仓库>` link 安装后实测，暴露并修复三项加载契约问题：
 
-1. **工厂闭包内不能有 CSS import**：tsdown CSS 管线在工厂顶部产出 `import './style.css'`，渲染层报 `Cannot use import statement outside a module`，整个 web boot 失败（应用弹窗「1 entry did not activate」）。改为 `src/client/styles.ts`：`jc-` 前缀类名的样式字符串，`apply` 时注入一次 `<style>`，删除 `.module.css` 与 `@tsdown/css`。
+1. **工厂闭包内不能有 CSS import**：tsdown CSS 管线在工厂顶部产出 `import './style.css'`，渲染层报 `Cannot use import statement outside a module`，整个 web boot 失败（应用弹窗「1 entry did not activate」）。改为 `src/client/styles.ts`：`jc-` 前缀类名的样式字符串，`apply` 时复用同一个 `<style>` 节点并更新变化的内容，删除 `.module.css` 与 `@tsdown/css`。2026-10-30 新版 UI 宿主验收发现旧节点使新增样式未生效，已修复仅按节点存在就跳过的逻辑；热重载后列表、固定确认栏与原生模态恢复正常。
 2. **服务依赖要在模块级导出 `inject`**：在 `apply` 内调 `ctx.inject([...], cb)` 时，回调没有触发，tab 不出现，也没有报错。宿主内置插件（sidebar-files 等）都是模块级 `export const inject = [...]`，由 loader 等服务就绪后再调 `apply`。改为同样写法（`slots`、`sidebarRightTabs`、`remote`、`remote.workspaceFiles`）后，右侧栏引导出现「Journal Club」入口，点开后空态正常渲染，console 无错误。
 
 3. **skill 文件路径错位**：host 侧按 `lib/index.js` 相对路径读 `./skills/journal-club/SKILL.md`，但包里只随带 `src/skills/journal-club/SKILL.md`，读取失败只进日志，斜杠菜单里没有 `journal-club`。改为解析 `../src/skills/journal-club/SKILL.md`（src 与 lib 下都成立），同步读取并从 frontmatter 取 name/description（与宿主 skill-office 一致），新增 `tests/skill.spec.ts` 固化。

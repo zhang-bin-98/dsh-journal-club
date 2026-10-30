@@ -100,10 +100,14 @@ const css = `
 }
 `
 
-/** One injection per page; safe to call from every apply. */
+/** One stylesheet per page; replace stale rules when a client bundle reloads. */
 export function ensureStyles(): void {
   if (typeof document === 'undefined') return
-  if (document.getElementById(STYLE_ID) !== null) return
+  const existing = document.getElementById(STYLE_ID)
+  if (existing !== null) {
+    if (existing.textContent !== css) existing.textContent = css
+    return
+  }
   const element = document.createElement('style')
   element.id = STYLE_ID
   element.textContent = css
