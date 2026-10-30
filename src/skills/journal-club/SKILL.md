@@ -60,7 +60,7 @@ Present the candidates and unresolved figure issues for user review in the Journ
 
 For a complete workflow, include `<!-- jc-card {"project":"<project path relative to the session workspace>","stage":"figures"} -->` in the response when reaching this confirmation point. Use the actual project path and JSON escaping. At the outline and deck confirmation points use the same marker with stage `outline` and `deck`, respectively. The host renders a shortcut to the current artifacts; emitting a card never confirms content, advances state, or proves review. Local tasks do not emit workflow cards.
 
-On an explicit `/jc confirm figures` (or unambiguous equivalent), ensure requested crop assets are current, read the final `figures.json.revision`, and record `confirmations.figures = { revision, at }`. Then and only then proceed to outline generation. A figure change after confirmation invalidates it by revision mismatch; return to figure review and wait for a new confirmation.
+Keep review bounded and prioritize missing figures, clipped essential information, wrong references and clear content errors. Manual inspection, adjustment and whole-figure fallbacks are normal parts of the workflow. Minor crop imperfections and iteration counts do not impose an extra confirmation gate; disclose remaining issues rather than polishing indefinitely. On an explicit `/jc confirm figures` (or unambiguous equivalent), ensure requested crop assets are current, read the final `figures.json.revision`, and record `confirmations.figures = { revision, at }`. Then and only then proceed to outline generation. A figure change after confirmation invalidates it by revision mismatch; return to figure review and wait for a new confirmation.
 
 ### 2. Build the narrative outline
 
