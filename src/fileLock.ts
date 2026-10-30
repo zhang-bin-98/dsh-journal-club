@@ -62,7 +62,7 @@ async function staleLockContent(lockPath: string): Promise<string | undefined> {
 async function reclaimIfStale(lockPath: string): Promise<boolean> {
   const stale = await staleLockContent(lockPath)
   if (stale === undefined) return false
-  // 再读一次，避免删掉另一个回收者刚建立的新锁。
+  // 删除前再读一次，缩小误删另一回收者刚建立新锁的窗口；跨进程同时回收仍是尽力而为。
   if (await readFile(lockPath, 'utf8').catch(() => undefined) !== stale) return false
   await rm(lockPath, { force: true })
   return true

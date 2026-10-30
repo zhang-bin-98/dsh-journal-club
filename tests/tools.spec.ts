@@ -209,6 +209,25 @@ describe('crop 工具', () => {
     expect((await readdir(join(project, 'figures'))).filter(name => name.endsWith('.tmp'))).toEqual([])
   })
 
+  it('落盘失败时撤回本次新登记的 asset，不留下指向缺失文件的引用', async () => {
+    const { project, pdfRel } = await prepareProject()
+    await writeFile(join(project, 'figures.json'), JSON.stringify({
+      version: 1,
+      revision: 1,
+      documents: [{ id: 'main', path: pdfRel, role: 'main', pages: 30 }],
+      figures: [{ id: 'fig1', status: 'pending', regions: [{ document: 'main', page: 2, bbox: [0, 0, 612, 792] }],
+        panels: [{ id: 'fig1_A', label: 'A', region_index: 0, bbox: [40, 40, 300, 300], caption_refs: [], flags: [], origin: 'auto' }] }],
+    }), 'utf8')
+    // 目标路径被目录占用，rename 必然失败。
+    await mkdir(join(project, 'figures', 'fig1_A.png', 'blocker'), { recursive: true })
+    const { ctx, defs } = captureTools()
+    registerCrop(ctx)
+    await expect(defs.get('crop')!.execute({ figures_json: 'paper-b/figures.json' }, runCtx())).rejects.toThrow()
+    const saved = JSON.parse(await readFile(join(project, 'figures.json'), 'utf8'))
+    expect(saved.figures[0].panels[0].asset).toBeUndefined()
+    expect((await readdir(join(project, 'figures'))).filter(name => name.endsWith('.tmp'))).toEqual([])
+  })
+
   it('拒绝非法 panel id 且不创建 figures 目录外文件', async () => {
     const { project } = await prepareProject()
     const figuresPath = join(project, 'figures.json')

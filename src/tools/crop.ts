@@ -1,4 +1,4 @@
-import { mkdir, rename, rm } from 'node:fs/promises'
+import { rename, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -254,9 +254,9 @@ export function registerCrop(ctx: Context): void {
 
           // 成功裁出的 panel 一次回写 asset（单次 revision）；已有 asset 的只需在
           // revision 未变时替换像素，不制造无意义的版本与快照。
-          const patch = staged
-            .filter(item => data.figures[item.figureIndex]?.panels[item.panelIndex]?.asset === undefined)
-            .map(item => ({ op: 'add' as const, path: `/figures/${item.figureIndex}/panels/${item.panelIndex}/asset`, value: `figures/${item.id}.png` }))
+          const assetPath = (item: StagedAsset) => `/figures/${item.figureIndex}/panels/${item.panelIndex}/asset`
+          const added = new Set(staged.filter(item => data.figures[item.figureIndex]?.panels[item.panelIndex]?.asset === undefined))
+          const patch = [...added].map(item => ({ op: 'add' as const, path: assetPath(item), value: `figures/${item.id}.png` }))
           if (patch.length > 0) {
             const updated = await updateFiguresFile(absFigures, patch, revision, { signal: exec.signal })
             if (!updated.ok) throw new Error(`crop 写入冲突：figures.json 已更新到 revision=${updated.revision}，请按最新框重新裁切`)
@@ -267,10 +267,16 @@ export function registerCrop(ctx: Context): void {
               throw new Error(`crop 写入冲突：figures.json 已更新到 revision=${current.revision}，请按最新框重新裁切`)
             }
           }
-          while (staged.length > 0) {
-            const item = staged[0]!
-            await rename(item.tempPath, item.outPath)
-            staged.shift()
+          try {
+            while (staged.length > 0) {
+              await rename(staged[0]!.tempPath, staged[0]!.outPath)
+              staged.shift()
+            }
+          } catch (error) {
+            // 本次新登记但未落盘的 asset 尽力撤回，避免 figures.json 指向不存在的文件。
+            const rollback = staged.filter(item => added.has(item)).map(item => ({ op: 'remove' as const, path: assetPath(item) }))
+            if (rollback.length > 0) await updateFiguresFile(absFigures, rollback, revision).catch(() => undefined)
+            throw error
           }
         } finally {
           await Promise.all(staged.map(item => rm(item.tempPath, { force: true }).catch(() => {})))

@@ -241,10 +241,10 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 ## D30 实现收敛：crop 单次回写、残留锁回收、校验同源（2026-10-30）
 
 - **问题**：架构复查发现三处缺陷。crop 遇任一异常即整批不回写、删除暂存 PNG，却仍在 `cropped` 中报告资产路径，agent 会把旧图当成新裁结果；crop 每个 panel 单独写一次 revision，全量裁切产生 N 份快照，按 10 份滚动会冲掉切分阶段的 `.history`；`.lock` 写入了 pid 却无人检查，进程崩溃后的残留锁让之后的写入全部超时。
-- **决策**：crop 将本次新资产路径合成一个 patch，经同一写入入口回写（至多 revision+1）；已登记 asset 的 panel 只在 revision 未变时替换像素，不增加版本。异常项列入 anomalies，不阻断其余 panel，`cropped` 只列实际落盘的资产；写入冲突时丢弃暂存图并报错。锁逻辑合并为 `src/fileLock.ts`，figures.json 与 groups.json 共用；锁内容记录的 pid 已退出，或锁为空且超过 5 秒，即回收。
+- **决策**：crop 将本次新资产路径合成一个 patch，经同一写入入口回写（至多 revision+1）；已登记 asset 的 panel 只在 revision 未变时替换像素，不增加版本。异常项列入 anomalies，不阻断其余 panel，`cropped` 只列实际落盘的资产；写入冲突时丢弃暂存图并报错。锁逻辑合并为 `src/fileLock.ts`，figures.json 与 groups.json 共用；锁内容记录的 pid 已退出，或锁内容为空/不可解析且超过 5 秒（含旧版 compose 留下的空锁），即回收；删除前复读锁内容以缩小多进程同时回收的竞态，仍属尽力而为。rename 落盘失败时，本次新登记但未落盘的 asset 尽力撤回。
 - **同源**：validate 复用 `figuresJsonIssues`（与 update_figures 写入前校验同一规则，原先两套规则不一致，validate 漏查负坐标和 asset 路径）；groups.json 解析与成员指纹集中在 `src/groups.ts`，compose_panels 与 validate 共用同一算法。MinerU 换算 `mineruBBoxToPt`/`parseContentList` 经 `./project` 导出，skill 改为调用 helper，不再手算。client figures 类型改由 zod schema 推导。
 - **保留**：jc.md 的 `figures_revision`、自研 RFC 6902 patch 与 jc.md frontmatter 解析不在本次改动范围；三处 frontmatter 解析严格度不同（jc.md 严格、deck/状态卡宽松），合并会改变容错行为，暂不合并。
-- **验证**：104/104 回归（新增 crop 部分异常单次回写、残留锁回收、compose/validate 指纹一致、跨字段违例报告四项；移除无调用方的 `pageSizeFromImage` 用例）、typecheck、build 通过；未在真实宿主重测。
+- **验证**：105/105 回归（新增 crop 部分异常单次回写、落盘失败撤回 asset、残留锁回收、compose/validate 指纹一致、跨字段违例报告五项；移除无调用方的 `pageSizeFromImage` 用例）、typecheck、build 通过；未在真实宿主重测。
 
 ## 修订记录
 
