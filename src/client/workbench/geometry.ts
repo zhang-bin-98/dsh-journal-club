@@ -1,4 +1,10 @@
-import type { BBox } from '../types.ts'
+import type { BBox, JsonPatch } from '../types.ts'
+
+/** Keep the persisted containment invariant when a user corrects an undersized region. */
+export function expandRegionPatch(path: string, region: BBox, bbox: BBox): JsonPatch[] {
+  const expanded = [Math.min(region[0], bbox[0]), Math.min(region[1], bbox[1]), Math.max(region[2], bbox[2]), Math.max(region[3], bbox[3])]
+  return expanded.every((value, index) => value === region[index]) ? [] : [{ op: 'replace', path, value: expanded }]
+}
 
 export const DEFAULT_PAGE_SIZE = { width: 612, height: 792 }
 export const MIN_BBOX_SIZE = 2

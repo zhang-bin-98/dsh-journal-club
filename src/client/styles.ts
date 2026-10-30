@@ -61,11 +61,12 @@ const css = `
 .jc-pageImage { display: block; height: 100%; width: 100%; }
 .jc-pagePlaceholder { align-items: center; color: var(--jc-muted); display: flex; font-size: 11px; inset: 0; justify-content: center; min-height: 180px; padding: 12px; position: absolute; text-align: center; }
 .jc-panelBox { background: color-mix(in srgb, var(--jc-accent) 10%, transparent); border: 2px solid var(--jc-accent); box-sizing: border-box; cursor: pointer; position: absolute; }
-.jc-panelBoxSelected { border-color: var(--jc-warning); box-shadow: 0 0 0 2px color-mix(in srgb, var(--jc-warning) 30%, transparent); }
+.jc-panelBoxFlagged { border-color: var(--jc-warning); border-style: dashed; }
+.jc-panelBoxSelected { border-color: var(--jc-accent); border-style: solid; box-shadow: 0 0 0 2px color-mix(in srgb, var(--jc-accent) 40%, transparent); z-index: 1; }
 .jc-panelBoxChanged { animation: jc-changed 2.8s ease-out; }
 .jc-panelTag { background: var(--jc-accent); border: 0; border-radius: 3px; color: var(--dsh-alias-label-on-interactive, #fff); cursor: pointer; font: inherit; font-size: 10px; left: -2px; min-width: 18px; padding: 2px 4px; position: absolute; top: -2px; }
-.jc-panelBoxSelected .jc-panelTag { background: var(--jc-warning); }
-.jc-handle { background: var(--dsh-alias-bg-layer-1, #fff); border: 1px solid var(--jc-warning); border-radius: 50%; height: 8px; padding: 0; position: absolute; width: 8px; }
+.jc-panelBoxSelected .jc-panelTag { left: 8px; pointer-events: none; }
+.jc-handle { background: var(--dsh-alias-bg-layer-1, #fff); border: 1px solid var(--jc-accent); border-radius: 50%; height: 12px; padding: 0; position: absolute; width: 12px; z-index: 2; }
 .jc-handleNw { cursor: nwse-resize; left: -5px; top: -5px; }
 .jc-handleNe { cursor: nesw-resize; right: -5px; top: -5px; }
 .jc-handleSw { cursor: nesw-resize; bottom: -5px; left: -5px; }
@@ -78,8 +79,20 @@ const css = `
 .jc-captionLineSelected { background: color-mix(in srgb, var(--jc-warning) 14%, transparent); border-radius: 4px; color: var(--jc-text); }
 .jc-assetPreview { background: var(--jc-surface-raised); border-radius: 7px; display: block; max-height: 180px; max-width: 100%; object-fit: contain; }
 .jc-error, .jc-conflict { border: 1px solid color-mix(in srgb, var(--jc-warning) 55%, var(--jc-border)); border-radius: 8px; color: var(--jc-warning); font-size: 12px; line-height: 1.5; padding: 9px; }
-.jc-modalBackdrop { align-items: center; background: color-mix(in srgb, #000 45%, transparent); display: flex; inset: 0; justify-content: center; padding: 14px; position: fixed; z-index: 20; }
-.jc-modal { background: var(--dsh-alias-bg-layer-1, #fff); border: 1px solid var(--jc-border); border-radius: 11px; box-shadow: var(--dsh-alias-elevation-overlay, 0 8px 30px rgba(0, 0, 0, .2)); max-height: 90vh; max-width: 720px; overflow: auto; padding: 12px; width: min(100%, 720px); }
+.jc-inlineDialog { position: static; margin: 0; width: auto; max-width: none; max-height: none; padding: 0; border: 0; background: transparent; color: inherit; }
+.jc-modal::backdrop { background: color-mix(in srgb, #000 45%, transparent); }
+.jc-modal { background: var(--dsh-alias-bg-layer-1, #fff); border: 1px solid var(--jc-border); border-radius: 11px; box-shadow: var(--dsh-alias-elevation-overlay, 0 8px 30px rgba(0, 0, 0, .2)); max-height: 90vh; color: var(--jc-text); max-width: 960px; overflow: auto; padding: 12px; width: calc(100vw - 48px); }
+.jc-workbench { flex: 1; min-height: 160px; }
+.jc-figureList { flex: 1; }
+.jc-toolbar, .jc-confirmBar { flex: none; padding: 8px 12px; }
+.jc-confirmBar { border-top: 1px solid var(--jc-border); display: grid; gap: 8px; }
+.jc-figureHeader { flex-wrap: wrap; }
+.jc-figureToggle { background: transparent; border: 0; color: inherit; cursor: pointer; font: inherit; font-weight: 650; padding: 4px 0; text-align: left; }
+.jc-panelDetail { display: grid; gap: 8px; border-top: 1px solid var(--jc-border); padding-top: 8px; }
+.jc-zoomFrame { max-height: 55vh; overflow: auto; padding: 8px; }
+.jc-projectSummary { flex: none; max-height: 45%; overflow: auto; padding: 8px 12px; border-bottom: 1px solid var(--jc-border); }
+.jc-root summary { cursor: pointer; }
+.jc-root button:focus-visible, .jc-root summary:focus-visible, .jc-root select:focus-visible, .jc-root input:focus-visible { outline: 2px solid var(--jc-accent); outline-offset: 2px; }
 @media (max-width: 460px) {
   .jc-content { padding: 8px; }
   .jc-header { padding: 10px 8px; }
@@ -99,6 +112,15 @@ export function ensureStyles(): void {
 
 export const styles = {
   root: 'jc-root',
+  workbench: 'jc-workbench',
+  figureList: 'jc-figureList',
+  toolbar: 'jc-toolbar',
+  confirmBar: 'jc-confirmBar',
+  figureToggle: 'jc-figureToggle',
+  panelDetail: 'jc-panelDetail',
+  panelBoxFlagged: 'jc-panelBoxFlagged',
+  zoomFrame: 'jc-zoomFrame',
+  projectSummary: 'jc-projectSummary',
   header: 'jc-header',
   eyebrow: 'jc-eyebrow',
   title: 'jc-title',
@@ -149,4 +171,5 @@ export const styles = {
   conflict: 'jc-conflict',
   modalBackdrop: 'jc-modalBackdrop',
   modal: 'jc-modal',
+  inlineDialog: 'jc-inlineDialog',
 } as const

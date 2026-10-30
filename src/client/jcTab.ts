@@ -1,4 +1,4 @@
-import { createElement as h, useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactElement } from 'react'
+import { createElement as h, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import { createProjectStore } from './store.ts'
 import { FigureWorkbench } from './workbench/FigureWorkbench.ts'
@@ -39,6 +39,10 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
   const [error, setError] = useState<string>()
   const [scanRevision, setScanRevision] = useState(0)
   const [artifacts, setArtifacts] = useState<string[]>([])
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const sendingRef = useRef(false)
+  const [workbenchOpen, setWorkbenchOpen] = useState(true)
   const files = useMemo(() => workspaceFiles(props.remote.workspaceFiles), [props.remote])
   const store = useMemo(() => createProjectStore({
     files, sessionId: props.sessionId, projectPath,
@@ -78,19 +82,25 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
   }, [props.remote, props.sessionId, projectPath, snapshot.loadedAt])
   const followup = useCallback(async (text: string) => {
     const sessions = props.context.sessions as unknown as SessionScopes
-    await sendSessionMessage(sessions, props.sessionId, '项目：' + JSON.stringify(projectPath || '.') + '\n' + text)
+    if (sendingRef.current) throw new Error('请求正在发送，请稍候。')
+    sendingRef.current = true; setSending(true); setSent(false)
+    try { await sendSessionMessage(sessions, props.sessionId, '项目：' + JSON.stringify(projectPath || '.') + '\n' + text); setSent(true) }
+    finally { sendingRef.current = false; setSending(false) }
   }, [props.context, props.sessionId, projectPath])
   const open = (path: string) => props.context.sidebarRight?.openResource(fileAddress(props.sessionId, projectPath ? projectPath + '/' + path : path))
   const loadPage = useCallback(async (document: string, page: number) => {
     const info = unwrap(await props.remote.journalClub.pageInfo(props.sessionId, projectPath, document, page, new AbortController().signal))
     return {...info, src: await store.readAsset(info.path)}
   }, [props.remote, props.sessionId, projectPath, store, snapshot.loadedAt])
-  return h('div', {className: styles.root, style: {display: 'block', overflow: 'auto', height: '100%'}},
-    h('div', {className: styles.content},
+  const choosingProject = projects.length > 1 && !projectPath && !snapshot.jcText
+  const stageLabels: Record<string, string> = {analysis: '论文分析', 'figure-review': '图源核对', outline: '叙事大纲', deck: '幻灯片内容', render: 'PPTX 渲染', done: '交付'}
+  return h('div', {className: styles.root, style: {height: '100%'}},
+    h('details', {key: `${projectPath}:${Boolean(snapshot.jcText)}`, className: styles.projectSummary, open: !snapshot.jcText},
+      h('summary', null, snapshot.jcText ? `${stageLabels[status.stageHint ?? ''] ?? '项目'} · 进度与产物` : '打开论文项目'),
       projects.length > 1 ? h('label', null, '打开项目 ', h('select', {value: projectPath, onChange: (e: {target: {value: string}}) => { setProjectPath(e.target.value); setError(undefined) }},
         h('option', {value: ''}, '请选择项目'), ...projects.map(p => h('option', {key: p.path, value: p.path}, p.title)))) : null,
       h('button', {className: styles.secondaryAction, onClick: () => setScanRevision(n => n + 1)}, '重新扫描项目'),
-      h('p', {className: styles.subtitle}, '项目：' + (projectPath || '当前工作目录')),
+      h('p', {className: styles.subtitle}, choosingProject ? `检测到 ${projects.length} 个项目，请选择论文目录。` : '项目：' + (projectPath || '当前工作目录')),
       error || snapshot.error ? h('p', {role: 'alert', className: styles.error}, error ?? snapshot.error) : null,
       snapshot.jcText ? h('section', {'aria-label': '项目进度'},
         h('h2', null, status.title || '项目进度'),
@@ -100,11 +110,15 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
         h('p', {className: styles.subtitle}, status.confirmationNote)) : null,
       snapshot.jcText ? h('div', {className: styles.inlineActions},
         ...['jc.md','analysis.md','outline.md','deck.md'].filter(p => artifacts.includes(p)).map(path => h('button', {key: path, className: styles.secondaryAction, onClick: () => open(path)}, '预览 ' + path)),
-        h('button', {className: styles.action, onClick: () => void followup('继续 journal club；先核对产物和确认记录，再从有效断点恢复。').catch(e => setError(String(e)))}, '继续项目')) : null,
+        h('button', {className: styles.action, disabled: sending, onClick: () => void followup('继续 journal club；先核对产物和确认记录，再从有效断点恢复。').catch(e => setError(String(e)))}, sending ? '正在发送…' : '继续项目')) : null,
+      sent ? h('p', {role: 'status', className: styles.subtitle}, '已发送至聊天，请查看后续回复。') : null,
+      snapshot.jcText ? h('p', {className: styles.subtitle}, snapshot.jcText.replace(/^---[\s\S]*?---/u, '').trim().slice(0, 240)) : null,
     ),
-    snapshot.figures ? h(FigureWorkbench, {key: `${props.sessionId}:${projectPath}`, store, loadPage, onFollowup: followup, onOpenResource: open}) :
-      h('div', {className: styles.content}, h('h2', null, snapshot.jcText ? '项目状态' : '还没有当前项目'),
-        h('p', null, snapshot.jcText ? '已读取 jc.md；产物与确认有效性由对话核对。' : '把论文 PDF 拖进聊天，或让我切分、拼图、渲染。'),
+    snapshot.figures ? h('div', {className: styles.root, style: {flex: 1}},
+      h('button', {type: 'button', className: styles.secondaryAction, 'aria-expanded': workbenchOpen, onClick: () => setWorkbenchOpen(v => !v)}, workbenchOpen ? '收起图源工作台' : '打开图源工作台'),
+      h('div', {hidden: !workbenchOpen, style: workbenchOpen ? {display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0} : undefined}, h(FigureWorkbench, {key: `${props.sessionId}:${projectPath}`, store, loadPage, onFollowup: followup, onOpenResource: open}))) :
+      h('div', {className: styles.content}, h('h2', null, snapshot.jcText ? '项目状态' : choosingProject ? '请选择已有项目' : '还没有当前项目'),
+        h('p', null, snapshot.jcText ? '已读取 jc.md；产物与确认有效性由对话核对。' : choosingProject ? '在上方选择论文目录即可继续。' : '把论文 PDF 拖进聊天，或让我切分、拼图、渲染。'),
         snapshot.jcText ? h('p', null, snapshot.jcText.replace(/^---[\s\S]*?---/u, '').trim().slice(0, 240)) : null),
   )
 }

@@ -54,7 +54,7 @@ function ConfirmationCard({ node, sessionId, host }: CardProps & { readonly host
         const names = listing.entries.filter(entry => entry.type === 'file').map(entry => entry.name)
         setFiles(names)
         if (listing.truncated) setReadError('项目列表超过宿主上限；产物摘要可能不完整。')
-        if (!names.includes('figures.json')) return
+        if (marker.stage !== 'figures' || !names.includes('figures.json')) return
         const reader = workspaceFiles(host.remote.workspaceFiles)
         const source = await reader.read(sessionId, pathFor('figures.json'), controller.signal)
         const data = parseFiguresJson(source.text)
@@ -78,7 +78,7 @@ function ConfirmationCard({ node, sessionId, host }: CardProps & { readonly host
       finally { if (!controller.signal.aborted) setLoaded(true) }
     })()
     return () => { controller.abort(); for (const url of urls) URL.revokeObjectURL(url) }
-  }, [host, sessionId, marker.project, refresh])
+  }, [host, sessionId, marker.project, marker.stage, refresh])
   async function run(action: () => unknown | Promise<unknown>): Promise<void> {
     setError(undefined)
     setSending(true)
@@ -91,10 +91,10 @@ function ConfirmationCard({ node, sessionId, host }: CardProps & { readonly host
     h('strong', null, `Journal Club · ${LABELS[marker.stage]}`),
     h('p', { className: styles.subtitle }, `项目：${marker.project || '当前目录'}。此卡片是确认入口，当前文件版本由 agent 核对。`),
     !loaded ? h('p', {className: styles.subtitle}, '正在读取当前产物…') : null,
-    figures ? h('p', {className: styles.subtitle}, figures.figures.length + ' Figure · ' + figures.figures.reduce((n, f) => n + f.panels.length, 0) + ' Panel · 疑点 ' + figures.figures.reduce((n, f) => n + f.panels.filter(p => p.flags.length > 0).length, 0) + ' · revision ' + figures.revision) : loaded && !readError ? h('p', {className: styles.subtitle}, '尚未发现 figures.json') : null,
+    figures ? h('p', {className: styles.subtitle}, figures.figures.length + ' Figure · ' + figures.figures.reduce((n, f) => n + f.panels.length, 0) + ' Panel · 疑点 ' + figures.figures.reduce((n, f) => n + f.panels.filter(p => p.flags.length > 0).length, 0) + ' · revision ' + figures.revision) : marker.stage === 'figures' && loaded && !readError ? h('p', {className: styles.subtitle}, '尚未发现 figures.json') : null,
     marker.stage !== 'figures' && loaded && !readError ? h('p', {className: styles.subtitle}, files.includes(filename) ? filename + ' 已产出；内容与确认状态待核对。' : '尚未发现 ' + filename) : null,
     thumbnails.length ? h('div', {style: {display: 'flex', gap: 8, overflowX: 'auto'}, 'aria-label': '已有 Panel 缩略图（最多八张）'}, thumbnails.map(image => h('figure', {key: image.id, style: {margin: 0, flex: '0 0 96px'}}, h('img', {src: image.src, alt: image.label, style: {width: 96, height: 72, objectFit: 'contain'}}), h('figcaption', {className: styles.subtitle}, image.label)))) : null,
-    h('p', {className: styles.subtitle}, '缩略图显示已有裁切资产；最新框以工作台为准。'),
+    thumbnails.length ? h('p', {className: styles.subtitle}, '缩略图显示已有裁切资产；最新框以工作台为准。') : null,
     readError ? h('p', {className: styles.error, role: 'alert'}, readError) : null,
     h('div', { className: styles.inlineActions },
       h('button', {type: 'button', className: styles.secondaryAction, onClick: () => setRefresh(value => value + 1)}, '刷新摘要'),
