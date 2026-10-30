@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto'
 import { access, readFile } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
-import { loadFiguresJson, type FiguresJson, type Panel } from '../figures/figuresJson.ts'
+import { figuresJsonIssues, loadFiguresJson, type FiguresJson, type Panel } from '../figures/figuresJson.ts'
+import { digestMembers, readGroups, type GroupsFile } from '../groups.ts'
 import { normalizeAssetReference, parseDeck, projectPath, readTextIfExists, isSourceLineValid, panelMentionTokens } from './markdown.ts'
 
 export interface ValidationIssue {
@@ -16,36 +16,6 @@ export interface ValidationIssue {
 export interface ValidationReport {
   errors: ValidationIssue[]
   warnings: ValidationIssue[]
-}
-
-interface GroupEntry {
-  id: string
-  asset: string
-  members: string[]
-  inputs_digest: string
-  layout?: unknown
-}
-
-interface GroupsFile {
-  version: number
-  groups: GroupEntry[]
-}
-
-function parseGroupsFile(raw: string): GroupsFile {
-  const value: unknown = JSON.parse(raw)
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('groups.json 必须是对象')
-  const record = value as Record<string, unknown>
-  if (record.version !== 1 || !Array.isArray(record.groups)) throw new Error('groups.json version/groups 不合法')
-  const groups: GroupEntry[] = []
-  for (const [index, item] of record.groups.entries()) {
-    if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new Error(`groups[${index}] 必须是对象`)
-    const group = item as Record<string, unknown>
-    if (typeof group.id !== 'string' || typeof group.asset !== 'string' || typeof group.inputs_digest !== 'string' || !Array.isArray(group.members) || !group.members.every(member => typeof member === 'string')) {
-      throw new Error(`groups[${index}] 缺少合法 id/asset/members/inputs_digest`)
-    }
-    groups.push({ id: group.id, asset: group.asset, members: group.members as string[], inputs_digest: group.inputs_digest, layout: group.layout })
-  }
-  return { version: 1, groups }
 }
 
 function issue(code: string, message: string, extra: Omit<ValidationIssue, 'code' | 'message'> = {}): ValidationIssue {
@@ -68,16 +38,17 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-function digestAssets(projectDir: string, panelIds: string[], panels: Map<string, Panel>): Promise<string> {
-  return Promise.all(panelIds.map(async id => {
+/** 与 compose_panels 登记时相同的成员指纹；成员缺失或路径越界时必然不匹配。 */
+async function digestAssets(projectDir: string, panelIds: string[], panels: Map<string, Panel>): Promise<string> {
+  const members = await Promise.all(panelIds.map(async id => {
     const panel = panels.get(id)
-    if (!panel?.asset) return `${id}:missing`
+    if (!panel?.asset) return { id }
     const path = projectPath(projectDir, panel.asset)
-    if (!isInsideProject(projectDir, path)) return `${id}:unsafe-path`
-    if (!await exists(path)) return `${id}:missing`
-    const bytes = await readFile(path)
-    return `${id}:${createHash('sha256').update(bytes).digest('hex')}`
-  })).then(parts => createHash('sha256').update(parts.join('\n')).digest('hex'))
+    if (!isInsideProject(projectDir, path)) return { id, missing: 'unsafe-path' }
+    const bytes = await readFile(path).catch(() => undefined)
+    return bytes === undefined ? { id } : { id, bytes }
+  }))
+  return digestMembers(members)
 }
 
 function normalizeMention(text: string): Set<string> {
@@ -98,42 +69,14 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
   const panels = new Map<string, Panel>()
   const panelAssets = new Map<string, string>()
   if (figures) {
-    const documents = new Set<string>()
-    for (const document of figures.documents) {
-      if (documents.has(document.id)) errors.push(issue('DUPLICATE_DOCUMENT_ID', `重复 document id：${document.id}`, { path: 'figures.json' }))
-      documents.add(document.id)
-    }
-    const figureIds = new Set<string>()
+    // 跨字段约束与 update_figures 写入前的校验同源，手工改坏的文件在此报告。
+    for (const message of figuresJsonIssues(figures)) errors.push(issue('FIGURES_INVALID', message, { path: 'figures.json' }))
     for (const figure of figures.figures) {
-      if (figureIds.has(figure.id)) errors.push(issue('DUPLICATE_FIGURE_ID', `重复 figure id：${figure.id}`, { path: 'figures.json' }))
-      figureIds.add(figure.id)
-      const regions = figure.regions
-      for (const region of regions) {
-        const document = figures.documents.find(item => item.id === region.document)
-        if (!document) errors.push(issue('UNKNOWN_DOCUMENT', `region 引用未知 document：${region.document}`, { path: 'figures.json', panel: figure.id }))
-        else if (document.pages > 0 && region.page > document.pages) errors.push(issue('PAGE_OUT_OF_RANGE', `region 页码超出 document：${region.page}`, { path: 'figures.json', panel: figure.id }))
-        if (region.bbox.some(value => !Number.isFinite(value)) || region.bbox[2] <= region.bbox[0] || region.bbox[3] <= region.bbox[1]) errors.push(issue('DEGENERATE_BBOX', `region bbox 无效：${region.bbox.join(',')}`, { path: 'figures.json', panel: figure.id }))
-      }
-      if (figure.caption) {
-        for (const panel of figure.panels) {
-          for (const ref of panel.caption_refs) {
-            if (ref < 0 || ref >= figure.caption.sentences.length) errors.push(issue('CAPTION_REF_INVALID', `caption_refs 越界：${ref}`, { path: 'figures.json', panel: panel.id }))
-          }
-        }
-      }
       for (const panel of figure.panels) {
-        if (panels.has(panel.id)) errors.push(issue('DUPLICATE_PANEL_ID', `重复 panel id：${panel.id}`, { path: 'figures.json', panel: panel.id }))
         panels.set(panel.id, panel)
-        if (panel.region_index >= regions.length) errors.push(issue('REGION_INDEX_INVALID', `region_index 无效：${panel.region_index}`, { path: 'figures.json', panel: panel.id }))
-        const region = regions[panel.region_index]
-        if (region) {
-          if (panel.bbox[2] <= panel.bbox[0] || panel.bbox[3] <= panel.bbox[1]) errors.push(issue('DEGENERATE_BBOX', `panel bbox 退化：${panel.bbox.join(',')}`, { path: 'figures.json', panel: panel.id }))
-          if (panel.bbox[0] < region.bbox[0] || panel.bbox[1] < region.bbox[1] || panel.bbox[2] > region.bbox[2] || panel.bbox[3] > region.bbox[3]) errors.push(issue('PANEL_OUTSIDE_REGION', `panel bbox 超出所属 region：${panel.id}`, { path: 'figures.json', panel: panel.id }))
-        }
         if (panel.asset) {
           const normalized = normalizeAssetReference(panel.asset)
           panelAssets.set(panel.id, normalized)
-          if (normalized !== `figures/${panel.id}.png`) warnings.push(issue('ASSET_ID_MISMATCH', `panel asset 与 id 不一致：${panel.asset}`, { path: 'figures.json', panel: panel.id }))
           const assetPath = projectPath(absProject, normalized)
           if (!isInsideProject(absProject, assetPath)) errors.push(issue('ASSET_PATH_ESCAPE', `图片路径超出项目目录：${panel.asset}`, { path: 'figures.json', panel: panel.id }))
           else if (!await exists(assetPath)) errors.push(issue('PANEL_ASSET_MISSING', `panel asset 不存在：${panel.asset}`, { path: 'figures.json', panel: panel.id }))
@@ -145,13 +88,10 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
 
   const groupsPath = projectPath(absProject, 'groups.json')
   let groups: GroupsFile | undefined
-  const groupsText = await readTextIfExists(groupsPath)
-  if (groupsText !== undefined) {
-    try {
-      groups = parseGroupsFile(groupsText)
-    } catch (error) {
-      errors.push(issue('GROUPS_INVALID', `groups.json 无法解析：${(error as Error).message}`, { path: 'groups.json' }))
-    }
+  try {
+    groups = await readGroups(groupsPath)
+  } catch (error) {
+    errors.push(issue('GROUPS_INVALID', (error as Error).message, { path: 'groups.json' }))
   }
 
   const deckText = await readTextIfExists(projectPath(absProject, 'deck.md'))
@@ -190,8 +130,7 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
                 groupDigestCache.set(groupId, digestPromise)
               }
               const digest = await digestPromise
-              const suppliedDigest = group.inputs_digest.replace(/^sha256:/u, '')
-              if (digest !== suppliedDigest) {
+              if (digest.replace(/^sha256:/u, '') !== group.inputs_digest.replace(/^sha256:/u, '')) {
                 warnings.push(issue('GROUP_DIGEST_STALE', `图组成员资产已变化，需要重建：${groupId}`, { path: 'groups.json', page: page.index, group: groupId }))
               }
             }

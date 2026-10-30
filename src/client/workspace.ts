@@ -50,7 +50,3 @@ export async function discoverProjects(remote: WorkspaceRemote, sessionId: strin
   }
   return paths.sort().map(path => ({ path, title: path || '当前工作目录' }))
 }
-
-export function fileAddress(sessionId: string, path: string): string {
-  return `dsh-resource://file/session/${encodeURIComponent(sessionId)}/` + path.replace(/\\/g, '/').replace(/^(?:\.\/)+/, '').split('/').map(s => encodeURIComponent(s).replace(/%3A/gi, ':')).join('/')
-}

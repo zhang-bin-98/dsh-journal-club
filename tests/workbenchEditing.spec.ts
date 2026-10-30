@@ -5,12 +5,12 @@ import { AddFigure } from '../src/client/workbench/AddFigure.ts'
 import { parseFiguresJson } from '../src/figures/schema.ts'
 import { FigureWorkbench } from '../src/client/workbench/FigureWorkbench.ts'
 import { applyJsonPatch } from '../src/figures/figuresStore.ts'
-import type { BBox, FiguresFile, ProjectSnapshot, ProjectStore, UpdateFiguresRequest } from '../src/client/types.ts'
+import type { FiguresFile, ProjectSnapshot, ProjectStore, UpdateFiguresRequest } from '../src/client/types.ts'
 
 let view: ReactTestRenderer
 afterEach(() => { act(() => view?.unmount()) })
 
-async function mount(options: {region?: BBox; flags?: string[]; onFollowup?: (text: string) => Promise<void>} = {}) {
+async function mount(options: {region?: [number, number, number, number]; flags?: string[]; onFollowup?: (text: string) => Promise<void>} = {}) {
   let snapshot: ProjectSnapshot = {
     figures: { version: 1, status: 'draft', revision: 1,
       documents: [{ id: 'main', path: 'main.pdf', role: 'main', pages: 1 }],

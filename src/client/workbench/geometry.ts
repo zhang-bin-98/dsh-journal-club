@@ -6,7 +6,6 @@ export function expandRegionPatch(path: string, region: BBox, bbox: BBox): JsonP
   return expanded.every((value, index) => value === region[index]) ? [] : [{ op: 'replace', path, value: expanded }]
 }
 
-export const DEFAULT_PAGE_SIZE = { width: 612, height: 792 }
 export const MIN_BBOX_SIZE = 2
 
 export interface PageSize {
@@ -51,11 +50,6 @@ export function resizeBBox(
   if (handle.includes('n')) y0 = clamp(y0 + deltaY, 0, y1 - MIN_BBOX_SIZE)
   if (handle.includes('s')) y1 = clamp(y1 + deltaY, y0 + MIN_BBOX_SIZE, page.height)
   return [x0, y0, x1, y1]
-}
-
-export function pageSizeFromImage(width: number, height: number, dpi = 150): PageSize {
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return DEFAULT_PAGE_SIZE
-  return { width: width * 72 / dpi, height: height * 72 / dpi }
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { FigureEdit, FigureEditResult, PageInfo } from './types.ts'
-import { updateFigures } from './figures/figuresStore.ts'
+import { updateFiguresFile } from './figures/figuresStore.ts'
 import { assertInsideDirectory, stableStem, pageSuffix } from './paths.ts'
 import { PdfFile } from './pdf/pdf.ts'
 
@@ -38,7 +38,7 @@ export class JournalClubService extends TypertRemoteService {
   async updateFigures(sessionId: string, request: FigureEdit, signal: AbortSignal): Promise<FigureEditResult> {
     if (basename(request.figures_json) !== 'figures.json') throw new Error('工作台只能修改 figures.json')
     const path = await projectFile(sessionCwd(this.ctx, sessionId), request.figures_json)
-    const result = await updateFigures({ ...request, figures_json: path }, { signal })
+    const result = await updateFiguresFile(path, request.patch, request.base_rev, { signal })
     return { ok: result.ok, conflict: result.conflict, revision: result.revision }
   }
 

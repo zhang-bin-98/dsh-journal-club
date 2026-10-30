@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { updateFigures, type JsonPatchOperation } from '../figures/figuresStore.ts'
+import { updateFiguresFile, type JsonPatchOperation } from '../figures/figuresStore.ts'
 import { resolveWorkspacePath, workspaceCwd, displayWorkspacePath } from '../paths.ts'
 
 /**
@@ -53,12 +53,10 @@ export function registerUpdateFigures(ctx: Context): void {
       },
       async execute(args, exec) {
         const absPath = resolveWorkspacePath(args.figures_json, workspaceCwd(exec))
-        const result = await updateFigures(
-          {
-            figures_json: absPath,
-            patch: args.patch as unknown as readonly JsonPatchOperation[],
-            base_rev: args.base_rev,
-          },
+        const result = await updateFiguresFile(
+          absPath,
+          args.patch as unknown as readonly JsonPatchOperation[],
+          args.base_rev,
           { signal: exec.signal },
         )
         if (result.conflict) {

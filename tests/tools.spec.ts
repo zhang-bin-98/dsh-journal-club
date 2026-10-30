@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -158,7 +158,7 @@ describe('crop 工具', () => {
           status: 'pending',
           regions: [{ document: 'main', page: 2, bbox: [0, 0, 612, 792] }],
           panels: [
-            { id: 'fig1_A', label: 'A', region_index: 0, bbox: [50, 50, 350, 450], caption_refs: [], flags: [], origin: 'auto' },
+            { id: 'fig1_A', label: 'A', region_index: 0, bbox: [50, 50, 350, 450], asset: 'figures/fig1_A.png', caption_refs: [], flags: [], origin: 'auto' },
             { id: 'fig1_B', label: 'B', region_index: 7, bbox: [0, 0, 100, 100], caption_refs: [], flags: [], origin: 'auto' },
             { id: 'fig1_C', label: 'C', region_index: 0, bbox: [10, 10, 10.2, 10.2], caption_refs: [], flags: [], origin: 'auto' },
           ],
@@ -171,9 +171,42 @@ describe('crop 工具', () => {
     const result = (await defs.get('crop')!.execute(
       { figures_json: 'paper-b/figures.json', ids: ['fig1_A', 'fig1_B', 'fig1_C', 'nope'] },
       runCtx(),
-    )) as { cropped: Array<{ id: string }>; anomalies: Array<{ id: string; kind: string }> }
+    )) as { revision: number; cropped: Array<{ id: string }>; anomalies: Array<{ id: string; kind: string }> }
     expect(result.cropped.map(c => c.id)).toEqual(['fig1_A'])
     expect(result.anomalies.map(a => a.kind).sort()).toEqual(['bbox-outside-page', 'invalid-region-index', 'unknown-id'])
+    // 异常项不阻断其余 panel：已登记 asset 的像素照常替换，revision 不变。
+    expect((await stat(join(project, 'figures', 'fig1_A.png'))).size).toBeGreaterThan(1_000)
+    expect(result.revision).toBe(0)
+  })
+
+  it('部分 panel 异常时，其余新资产一次回写，cropped 与落盘一致', async () => {
+    const { project, pdfRel } = await prepareProject()
+    const panel = (id: string, bbox: number[]) => ({ id, label: id.slice(-1), region_index: 0, bbox, caption_refs: [], flags: [], origin: 'auto' })
+    await writeFile(join(project, 'figures.json'), JSON.stringify({
+      version: 1,
+      revision: 2,
+      documents: [{ id: 'main', path: pdfRel, role: 'main', pages: 30 }],
+      figures: [{
+        id: 'fig1',
+        status: 'pending',
+        regions: [{ document: 'main', page: 2, bbox: [0, 0, 2000, 2000] }],
+        panels: [panel('fig1_A', [40, 40, 300, 300]), panel('fig1_B', [300, 300, 560, 700]), panel('fig1_C', [1000, 1000, 1100, 1100])],
+      }],
+    }), 'utf8')
+    const { ctx, defs } = captureTools()
+    registerCrop(ctx)
+    const result = (await defs.get('crop')!.execute({ figures_json: 'paper-b/figures.json' }, runCtx())) as {
+      revision: number; cropped: Array<{ id: string; asset: string }>; anomalies: Array<{ id: string; kind: string }>
+    }
+    expect(result.cropped.map(c => c.id)).toEqual(['fig1_A', 'fig1_B'])
+    expect(result.anomalies).toEqual([{ id: 'fig1_C', kind: 'bbox-outside-page', detail: 'bbox=1000,1000,1100,1100' }])
+    for (const item of result.cropped) expect((await stat(join(work, item.asset))).size).toBeGreaterThan(1_000)
+    const saved = JSON.parse(await readFile(join(project, 'figures.json'), 'utf8'))
+    expect(result.revision).toBe(3)
+    expect(saved.revision).toBe(3)
+    expect(saved.figures[0].panels.map((p: { asset?: string }) => p.asset)).toEqual(['figures/fig1_A.png', 'figures/fig1_B.png', undefined])
+    expect(await readdir(join(project, '.history'))).toHaveLength(1)
+    expect((await readdir(join(project, 'figures'))).filter(name => name.endsWith('.tmp'))).toEqual([])
   })
 
   it('拒绝非法 panel id 且不创建 figures 目录外文件', async () => {

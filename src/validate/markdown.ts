@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 
 export interface DeckImageRef {
   alt: string
@@ -11,11 +11,8 @@ export interface DeckImageRef {
 export interface DeckPage {
   index: number
   declaredPage?: number
-  layout?: string
-  text: string
   images: DeckImageRef[]
   speech: string
-  sourceLines: string[]
 }
 
 export interface DeckDocument {
@@ -25,7 +22,6 @@ export interface DeckDocument {
 
 const PAGE_HEADER = /^<!--\s*page\s+(\d+)(?:\s*·\s*layout:\s*([^>]+?))?\s*-->\s*$/imu
 const IMAGE = /!\[([^\]]*)\]\(([^\s)]+)(?:\s+"[^"]*")?\)/gu
-const SOURCE = /^>\s*来源：(.+)$/mu
 const SPEECH = /^>\s*🗣\s*\*\*讲稿\*\*：?(.*(?:\n>.*)*)$/mu
 
 export async function readTextIfExists(path: string): Promise<string | undefined> {
@@ -80,11 +76,8 @@ export function parseDeck(text: string): DeckDocument {
     pages.push({
       index: pages.length + 1,
       declaredPage: header?.[1] === undefined ? undefined : Number(header[1]),
-      layout: header?.[2]?.trim(),
-      text: raw,
       images,
       speech,
-      sourceLines: [...raw.matchAll(/^>\s*来源：.*$/gmu)].map(match => match[0]),
     })
   })
   return { frontmatter, pages }
@@ -111,10 +104,6 @@ export function panelMentionTokens(text: string): string[] {
 
 export function isSourceLineValid(line: string): boolean {
   return /^>\s*来源：(?:Supplementary\s+)?(?:Figure|Fig\.?|图)\s*S?\d+[A-Za-z]*(?:\s*[–—-]\s*[A-Za-z]+)?\s*·\s*p\.\s*\d+(?:\s*·\s*.+)?$/iu.test(line)
-}
-
-export function fileNameOfAsset(asset: string): string {
-  return basename(normalizeAssetReference(asset))
 }
 
 export function projectPath(projectDir: string, path: string): string {

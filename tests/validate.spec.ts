@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
@@ -97,6 +97,18 @@ describe('validate', () => {
     try {
       const report = await validateProject(dir)
       expect(report.errors.filter(item => item.code === 'SOURCE_INVALID')).toHaveLength(1)
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('figures.json 跨字段约束与写入通道同源，手工改坏时报 FIGURES_INVALID', async () => {
+    const dir = await project(validDeck)
+    try {
+      const figures = JSON.parse(await readFile(join(dir, 'figures.json'), 'utf8'))
+      figures.figures[0].panels[0].bbox = [10, 10, 150, 50]
+      await writeFile(join(dir, 'figures.json'), JSON.stringify(figures))
+      const report = await validateProject(dir)
+      expect(report.errors.filter(item => item.code === 'FIGURES_INVALID').map(item => item.message))
+        .toEqual([expect.stringContaining('Panel bbox 必须位于关联 region 内')])
     } finally { await rm(dir, { recursive: true, force: true }) }
   })
 

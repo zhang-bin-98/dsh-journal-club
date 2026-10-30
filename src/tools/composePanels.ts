@@ -1,10 +1,11 @@
-import { createHash } from 'node:crypto'
-import { open, readFile, rm } from 'node:fs/promises'
-import { basename, dirname, extname, join, relative, resolve } from 'node:path'
+import { readFile, rm } from 'node:fs/promises'
+import { basename, dirname, extname, join, relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import sharp from 'sharp'
 import { atomicWriteFile } from '../files.ts'
+import { withFileLock } from '../fileLock.ts'
+import { digestMembers, readGroups, type GroupEntry, type GroupsFile } from '../groups.ts'
 import {
   assertInsideDirectory,
   assertSafeAssetId,
@@ -17,24 +18,11 @@ import {
   fitImageToCell,
   type LayoutKind,
   type Rect,
-} from '../layout/index.ts'
+} from '../layout/figureGeometry.ts'
 
 const CANVAS_WIDTH = 960
 const CANVAS_HEIGHT = 540
 const GAP_PT = 12
-
-type GroupEntry = {
-  id: string
-  asset: string
-  members: string[]
-  inputs_digest: string
-  layout?: unknown
-}
-
-type GroupsFile = {
-  version: 1
-  groups: GroupEntry[]
-}
 
 type InputImage = {
   id: string
@@ -67,59 +55,8 @@ type ComposeResult = {
   }
 }
 
-const queues = new Map<string, Promise<unknown>>()
-
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('操作已取消')
-}
-
-function queueFor<T>(path: string, task: () => Promise<T>): Promise<T> {
-  const key = resolve(path)
-  const previous = queues.get(key) ?? Promise.resolve()
-  const current = previous.catch(() => {}).then(task)
-  queues.set(key, current)
-  void current.finally(() => {
-    if (queues.get(key) === current) queues.delete(key)
-  }).catch(() => {})
-  return current
-}
-
-async function acquireLock(path: string, signal: AbortSignal): Promise<Awaited<ReturnType<typeof open>>> {
-  const started = Date.now()
-  for (;;) {
-    if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('操作已取消')
-    try {
-      return await open(path, 'wx')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      if (Date.now() - started > 10_000) throw new Error(`等待 groups.json 锁超时：${path}`)
-      await new Promise<void>((resolvePromise, reject) => {
-        const cleanup = () => signal.removeEventListener('abort', onAbort)
-        const timer = setTimeout(() => {
-          cleanup()
-          resolvePromise()
-        }, 20)
-        const onAbort = () => {
-          clearTimeout(timer)
-          cleanup()
-          reject(signal.reason instanceof Error ? signal.reason : new Error('操作已取消'))
-        }
-        signal.addEventListener('abort', onAbort, { once: true })
-        timer.unref?.()
-      })
-    }
-  }
-}
-
-async function withGroupsLock<T>(groupsPath: string, signal: AbortSignal, task: () => Promise<T>): Promise<T> {
-  const lockPath = `${groupsPath}.lock`
-  const lock = await acquireLock(lockPath, signal)
-  try {
-    return await task()
-  } finally {
-    await lock.close().catch(() => {})
-    await rm(lockPath, { force: true }).catch(() => {})
-  }
 }
 
 function projectDirForOutput(outputPath: string): string {
@@ -144,52 +81,6 @@ function panelIdFromAsset(path: string): string {
   const id = extension === '' ? name : name.slice(0, -extension.length)
   assertSafeAssetId(id)
   return id
-}
-
-function parseGroups(raw: string, path: string): GroupsFile {
-  let value: unknown
-  try {
-    value = JSON.parse(raw)
-  } catch (error) {
-    throw new Error(`groups.json 不可解析（${path}）：${(error as Error).message}`)
-  }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('groups.json 必须是对象')
-  const record = value as Record<string, unknown>
-  if (record.version !== 1 || !Array.isArray(record.groups)) throw new Error('groups.json version/groups 不合法')
-  const groups: GroupEntry[] = []
-  for (const [index, item] of record.groups.entries()) {
-    if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new Error(`groups[${index}] 必须是对象`)
-    const group = item as Record<string, unknown>
-    if (
-      typeof group.id !== 'string' ||
-      typeof group.asset !== 'string' ||
-      typeof group.inputs_digest !== 'string' ||
-      !Array.isArray(group.members) ||
-      !group.members.every(member => typeof member === 'string')
-    ) throw new Error(`groups[${index}] 缺少合法 id/asset/members/inputs_digest`)
-    groups.push({
-      id: group.id,
-      asset: group.asset,
-      members: [...group.members] as string[],
-      inputs_digest: group.inputs_digest,
-      layout: group.layout,
-    })
-  }
-  return { version: 1, groups }
-}
-
-async function readGroups(groupsPath: string): Promise<GroupsFile> {
-  try {
-    return parseGroups(await readFile(groupsPath, 'utf8'), groupsPath)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, groups: [] }
-    throw error
-  }
-}
-
-function digestInputs(images: readonly InputImage[]): string {
-  const parts = images.map(image => `${image.id}:${createHash('sha256').update(image.bytes).digest('hex')}`)
-  return `sha256:${createHash('sha256').update(parts.join('\n')).digest('hex')}`
 }
 
 function round(value: number): number {
@@ -322,7 +213,7 @@ export function registerComposePanels(ctx: Context): void {
         render: (_args, value) => [
           {
             type: 'text',
-            text: `compose_panels：${value.output ?? '<unknown>'}\\n  group=${value.group ?? '<unknown>'} members=${(value.members ?? []).join(', ')}\\n  layout=${value.layout?.kind ?? '<unknown>'} digest=${value.inputs_digest ?? '<unknown>'}`,
+            text: `compose_panels：${value.output ?? '<unknown>'}\n  group=${value.group ?? '<unknown>'} members=${(value.members ?? []).join(', ')}\n  layout=${value.layout?.kind ?? '<unknown>'} digest=${value.inputs_digest ?? '<unknown>'}`,
           },
         ],
       },
@@ -348,7 +239,7 @@ export function registerComposePanels(ctx: Context): void {
           }
         }
 
-        return queueFor(groupsPath, () => withGroupsLock(groupsPath, exec.signal, async () => {
+        return withFileLock(groupsPath, async () => {
           const groups = await readGroups(groupsPath)
           const previousOutput = await readFile(outputPath).catch(error => {
             if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
@@ -359,7 +250,7 @@ export function registerComposePanels(ctx: Context): void {
           const chosen = chooseLayout(images.length, images, args.layout_hint as LayoutKind | undefined, GAP_PT)
           const png = await composePng(images, chosen.cells)
           throwIfAborted(exec.signal)
-          const inputsDigest = digestInputs(images)
+          const inputsDigest = digestMembers(images)
           const cells = chosen.cells.map((cell, index) => {
             const image = images[index]!
             const content = fitImageToCell(cell, image)
@@ -405,7 +296,7 @@ export function registerComposePanels(ctx: Context): void {
             inputs_digest: inputsDigest,
             layout: entry.layout as ComposeResult['layout'],
           }
-        }))
+        }, { signal: exec.signal })
       },
     }),
   )

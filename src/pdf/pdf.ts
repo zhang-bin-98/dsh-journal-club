@@ -29,13 +29,8 @@ const require = createRequire(import.meta.url)
  * 以 `/` 结尾的 URL 形式；Node 下 pdfjs 经 fs.readFile 读取，正斜杠路径两者皆宜。
  */
 function assetDir(dir: string): string {
-  try {
-    const pkgRoot = dirname(require.resolve('pdfjs-dist/package.json')).split(sep).join('/')
-    return `${pkgRoot}/${dir}/`
-  } catch {
-    // 资源目录缺失时 pdfjs 仅告警降级，不阻断渲染。
-    return `https://unpkg.com/pdfjs-dist@6.4.299/${dir}/`
-  }
+  const pkgRoot = dirname(require.resolve('pdfjs-dist/package.json')).split(sep).join('/')
+  return `${pkgRoot}/${dir}/`
 }
 
 const docParams = {

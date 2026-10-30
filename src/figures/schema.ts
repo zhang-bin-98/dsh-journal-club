@@ -100,11 +100,12 @@ function bboxContains(outer: BBox, inner: BBox): boolean {
 }
 
 /**
- * 对已通过基础 schema 的数据执行 figures.json 的跨字段约束。
+ * 对已通过基础 schema 的数据执行 figures.json 的跨字段约束，返回问题列表。
+ * update_figures 写入前与 validate 共用这套规则。
  * 文件存在性不在这里检查：asset 可以在 crop 写回 JSON 的同一工作流中刚刚生成，
  * 但路径必须是该 panel 的约定相对路径。
  */
-export function validateFiguresJson(data: FiguresJson): FiguresJson {
+export function figuresJsonIssues(data: FiguresJson): string[] {
   const issues: string[] = []
   const documentIds = new Set<string>()
   const figureIds = new Set<string>()
@@ -196,6 +197,12 @@ export function validateFiguresJson(data: FiguresJson): FiguresJson {
     }
   }
 
+  return issues
+}
+
+/** 跨字段约束不满足时抛出 FiguresJsonFormatError。 */
+export function validateFiguresJson(data: FiguresJson): FiguresJson {
+  const issues = figuresJsonIssues(data)
   if (issues.length > 0) throw new FiguresJsonFormatError(issues)
   return data
 }

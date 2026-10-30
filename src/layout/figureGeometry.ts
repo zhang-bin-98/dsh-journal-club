@@ -17,14 +17,6 @@ export interface ImageSize {
 
 export type LayoutKind = 'grid' | 'rows' | '1+2'
 
-export interface LayoutGeometry {
-  readonly kind: LayoutKind
-  readonly width: number
-  readonly height: number
-  readonly gap: number
-  readonly cells: readonly Rect[]
-}
-
 export function containRect(area: Rect, aspect: number): Rect {
   if (!Number.isFinite(aspect) || aspect <= 0) throw new Error('图片宽高比必须是正数')
   const width = Math.min(area.width, area.height * aspect)
@@ -121,19 +113,4 @@ export function chooseLayout(
 
 export function fitImageToCell(cell: Rect, image: ImageSize): Rect {
   return containRect(cell, image.width / image.height)
-}
-
-export function serializeGeometry(geometry: LayoutGeometry): Record<string, unknown> {
-  return {
-    kind: geometry.kind,
-    width: geometry.width,
-    height: geometry.height,
-    gap: geometry.gap,
-    cells: geometry.cells.map(cell => ({
-      x: Number(cell.x.toFixed(6)),
-      y: Number(cell.y.toFixed(6)),
-      width: Number(cell.width.toFixed(6)),
-      height: Number(cell.height.toFixed(6)),
-    })),
-  }
 }

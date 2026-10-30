@@ -103,8 +103,3 @@ export function registerRenderPages(ctx: Context): void {
     }),
   )
 }
-
-/** 兼容旧调用方：相对当前进程目录显示路径。 */
-export function displayPath(absPath: string): string {
-  return displayWorkspacePath(absPath)
-}

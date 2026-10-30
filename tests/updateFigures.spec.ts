@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -183,6 +184,18 @@ describe('figuresStore RFC6902 patch', () => {
     await writeFile(join(work, 'paper', '.history'), 'not a directory', 'utf8')
     await expect(updateFiguresFile(figuresPath, [{ op: 'replace', path: '/status', value: 'confirmed' }], 0)).rejects.toThrow()
     expect(await readFile(figuresPath, 'utf8')).toBe(before)
+    await expect(readFile(figuresLockPath(figuresPath), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('回收已退出进程或写到一半留下的残留锁', async () => {
+    const dead = spawnSync(process.execPath, ['-e', '']).pid
+    await writeFile(figuresLockPath(figuresPath), `${JSON.stringify({ pid: dead, createdAt: '2026-01-01T00:00:00Z' })}\n`, 'utf8')
+    expect(await updateFiguresFile(figuresPath, [{ op: 'replace', path: '/status', value: 'confirmed' }], 0)).toMatchObject({ ok: true, revision: 1 })
+
+    await writeFile(figuresLockPath(figuresPath), '', 'utf8')
+    const old = new Date(Date.now() - 60_000)
+    await utimes(figuresLockPath(figuresPath), old, old)
+    expect(await updateFiguresFile(figuresPath, [{ op: 'replace', path: '/status', value: 'draft' }], 1)).toMatchObject({ ok: true, revision: 2 })
     await expect(readFile(figuresLockPath(figuresPath), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 

@@ -2,11 +2,12 @@ import { createElement as h, useCallback, useEffect, useMemo, useRef, useState, 
 import type { Context } from '@deepseek-ai/cordis'
 import { createProjectStore } from './store.ts'
 import { FigureWorkbench } from './workbench/FigureWorkbench.ts'
-import { workspaceFiles, discoverProjects, fileAddress, unwrap, type WorkspaceRemote, type ProjectEntry } from './workspace.ts'
+import { workspaceFiles, discoverProjects, unwrap, type WorkspaceRemote, type ProjectEntry } from './workspace.ts'
 import type { UpdateFiguresRequest, UpdateFiguresResult } from './types.ts'
 import { ensureStyles, styles } from './styles.ts'
 import { projectStatus } from './projectStatus.ts'
 import { sendSessionMessage, type SessionScopes } from './sessionActions.ts'
+import { fileResourceAddress } from './cardMarker.ts'
 
 const TAB_ID = 'dsh-journal-club'
 const TAB_KIND = 'journal-club'
@@ -87,7 +88,7 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
     try { await sendSessionMessage(sessions, props.sessionId, '项目：' + JSON.stringify(projectPath || '.') + '\n' + text); setSent(true) }
     finally { sendingRef.current = false; setSending(false) }
   }, [props.context, props.sessionId, projectPath])
-  const open = (path: string) => props.context.sidebarRight?.openResource(fileAddress(props.sessionId, projectPath ? projectPath + '/' + path : path))
+  const open = (path: string) => props.context.sidebarRight?.openResource(fileResourceAddress(props.sessionId, projectPath ? projectPath + '/' + path : path))
   const loadPage = useCallback(async (document: string, page: number) => {
     const info = unwrap(await props.remote.journalClub.pageInfo(props.sessionId, projectPath, document, page, new AbortController().signal))
     return {...info, src: await store.readAsset(info.path)}

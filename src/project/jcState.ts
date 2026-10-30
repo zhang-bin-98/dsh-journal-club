@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { atomicWriteFile } from '../files.ts'
 
 export const JC_STAGES = ['analysis', 'figure-review', 'outline', 'deck', 'render', 'done'] as const
 export type JcStage = (typeof JC_STAGES)[number]
@@ -459,7 +460,9 @@ export async function digestFile(path: string): Promise<string> {
 
 export async function createJcFile(path: string, input: CreateJcStateInput): Promise<JcState> {
   const state = createJcState(input)
-  await atomicWrite(path, serializeJcMarkdown(state), false)
+  // 新建不覆盖已有项目：独占创建，已存在时报 EEXIST。
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, serializeJcMarkdown(state), { encoding: 'utf8', flag: 'wx' })
   return state
 }
 
@@ -469,30 +472,8 @@ export async function readJcFile(path: string): Promise<JcState> {
 
 export async function updateJcFile(path: string, update: JcStateUpdate): Promise<JcState> {
   const state = updateJcState(await readJcFile(path), update)
-  await atomicWrite(path, serializeJcMarkdown(state), true)
+  await atomicWriteFile(path, serializeJcMarkdown(state))
   return state
-}
-
-async function atomicWrite(path: string, content: string, overwrite: boolean): Promise<void> {
-  await mkdir(dirname(path), { recursive: true })
-  const temporary = join(dirname(path), `.${path.split(/[\\/]/u).pop() ?? 'jc.md'}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`)
-  try {
-    await writeFile(temporary, content, { encoding: 'utf8' })
-    if (!overwrite) {
-      try {
-        await writeFile(path, content, { encoding: 'utf8', flag: 'wx' })
-        await rm(temporary, { force: true })
-        return
-      } catch (error) {
-        await rm(temporary, { force: true })
-        throw error
-      }
-    }
-    await rename(temporary, path)
-  } catch (error) {
-    await rm(temporary, { force: true }).catch(() => {})
-    throw error
-  }
 }
 
 export function isConfirmationValid(
@@ -539,8 +520,3 @@ export async function summarizeProjectConfirmations(projectDir: string, state?: 
   try { current.deck = { digest: await digestFile(join(projectDir, 'deck.md')), groups_digest: await digestFile(join(projectDir, 'groups.json')) } } catch { /* missing */ }
   return summarizeConfirmations(state ?? await readJcFile(join(projectDir, 'jc.md')), current)
 }
-
-export const parseJcState = parseJcMarkdown
-export const serializeJcState = serializeJcMarkdown
-export const updateJcStateMarkdown = updateJcMarkdown
-export const confirmationSummary = summarizeConfirmations

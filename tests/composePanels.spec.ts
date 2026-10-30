@@ -7,6 +7,7 @@ import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import sharp from 'sharp'
 import { registerComposePanels } from '../src/tools/composePanels.ts'
+import { validateProject } from '../src/validate/project.ts'
 
 function captureTool(): ToolDefinition {
   const defs = new Map<string, ToolDefinition>()
@@ -79,6 +80,25 @@ describe('compose_panels 工具', () => {
     expect(groups.groups).toHaveLength(1)
     expect(groups.groups[0]).toMatchObject({ id: 'fig1_ABC', asset: 'groups/fig1_ABC.png', members: result.members, inputs_digest: result.inputs_digest })
     expect(groups.groups[0].layout.kind).toBe('1+2')
+  })
+
+  it('compose 登记的成员指纹与 validate 重算一致', async () => {
+    await captureTool().execute(
+      { assets: ['paper/figures/panel-a.png', 'paper/figures/panel-b.png'], output: 'paper/groups/fig1_AB.png' },
+      runCtx(work),
+    )
+    const panel = (id: string, bbox: number[]) => ({ id, label: id.slice(-1), region_index: 0, bbox, asset: `figures/${id}.png`, caption_refs: [], flags: [], origin: 'auto' })
+    await writeFile(join(work, 'paper', 'figures.json'), JSON.stringify({
+      version: 1, revision: 1,
+      documents: [{ id: 'main', path: 'main.pdf', role: 'main', pages: 1 }],
+      figures: [{ id: 'fig1', regions: [{ document: 'main', page: 1, bbox: [0, 0, 600, 800] }], panels: [panel('panel-a', [0, 0, 100, 100]), panel('panel-b', [100, 100, 200, 200])] }],
+    }))
+    await writeFile(join(work, 'paper', 'deck.md'), '<!-- page 1 -->\n\n![Figure 1A](groups/fig1_AB.png)\n> 来源：Figure 1A · p.1\n\n> 🗣 **讲稿**：Figure 1A。\n')
+    const report = await validateProject(join(work, 'paper'))
+    expect(report.errors).toEqual([])
+    expect(report.warnings.map(item => item.code)).not.toContain('GROUP_DIGEST_STALE')
+    await writeFile(join(work, 'paper', 'figures', 'panel-b.png'), await png({ r: 0, g: 0, b: 0 }, 200, 400))
+    expect((await validateProject(join(work, 'paper'))).warnings.map(item => item.code)).toContain('GROUP_DIGEST_STALE')
   })
 
   it('非法布局整体拒绝且不产生 PNG 或 groups.json', async () => {

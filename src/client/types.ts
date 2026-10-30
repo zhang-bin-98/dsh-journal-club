@@ -1,50 +1,11 @@
+import type { DocumentEntry, Figure, FiguresJson } from '../figures/schema.ts'
+import type { FigureEditResult } from '../types.ts'
+
+// figures.json 形状只在 zod schema 中定义一次；client 读取时也用同一 schema 解析。
 export type BBox = readonly [number, number, number, number]
-
-export interface FigureRegion {
-  readonly document: string
-  readonly page: number
-  readonly bbox: BBox
-}
-
-export interface FigurePanel {
-  readonly id: string
-  readonly label: string | null
-  readonly region_index: number
-  readonly bbox: BBox
-  readonly asset?: string
-  readonly caption_refs: readonly number[]
-  readonly flags: readonly string[]
-  readonly origin: 'auto' | 'manual' | 'agent'
-}
-
-export interface FigureCaption {
-  readonly page: number
-  readonly sentences: readonly string[]
-}
-
-export interface FigureDocument {
-  readonly id: string
-  readonly path: string
-  readonly role: 'main' | 'supplement'
-  readonly pages: number
-}
-
-export interface FigureRecord {
-  readonly id: string
-  readonly label: string | null
-  readonly status: 'pending' | 'viewed' | 'adjusted' | 'excluded'
-  readonly regions: readonly FigureRegion[]
-  readonly caption?: FigureCaption
-  readonly panels: readonly FigurePanel[]
-}
-
-export interface FiguresFile {
-  readonly version: 1
-  readonly status: 'draft' | 'confirmed'
-  readonly revision: number
-  readonly documents: readonly FigureDocument[]
-  readonly figures: readonly FigureRecord[]
-}
+export type FigureDocument = DocumentEntry
+export type FigureRecord = Figure
+export type FiguresFile = FiguresJson
 
 export interface WorkspaceText {
   readonly text: string
@@ -78,21 +39,8 @@ export interface UpdateFiguresRequest {
   readonly base_rev: number
 }
 
-export interface UpdateFiguresSuccess {
-  readonly ok: true
-  readonly conflict: false
-  readonly revision: number
-  readonly figures?: FiguresFile
-}
-
-export interface UpdateFiguresConflict {
-  readonly ok: false
-  readonly conflict: true
-  readonly revision: number
-  readonly current?: FiguresFile
-}
-
-export type UpdateFiguresResult = UpdateFiguresSuccess | UpdateFiguresConflict
+/** 与 host Remote 返回值同一契约。 */
+export type UpdateFiguresResult = FigureEditResult
 
 /** Host-side RPC; the client never receives a filesystem writer. */
 export interface JournalClubRpcPort {
@@ -122,8 +70,4 @@ export interface ProjectStore {
   readonly updateFigures: (request: UpdateFiguresRequest) => Promise<UpdateFiguresResult>
   readonly readAsset: (path: string, signal?: AbortSignal) => Promise<string>
   readonly dispose: () => void
-}
-
-export function isUpdateConflict(result: UpdateFiguresResult): result is UpdateFiguresConflict {
-  return result.ok === false && result.conflict === true
 }

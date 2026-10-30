@@ -1,7 +1,6 @@
 import type {
   FiguresFile,
   FigureRecord,
-  JsonPatch,
   ProjectSnapshot,
   ProjectStore,
   UpdateFiguresRequest,
@@ -228,10 +227,6 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
     scheduleRefresh()
     while (refreshPromise !== undefined) await refreshPromise
   }
-}
-
-export function makePanelPatch(figureIndex: number, panelIndex: number, bbox: readonly [number, number, number, number]): JsonPatch {
-  return { op: 'replace', path: `/figures/${figureIndex}/panels/${panelIndex}/bbox`, value: [...bbox] }
 }
 
 function isAbortError(error: unknown): boolean {

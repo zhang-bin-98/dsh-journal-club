@@ -119,10 +119,10 @@ M1（渲染底座）实施中的四项关键事实，均已回写架构文档相
 M2 将 v3.1 的数据完整性契约落为可回归的 Node 实现，默认细节固定如下：
 
 1. **JSON Patch 采用 RFC 6902 风格六操作**：`add`、`remove`、`replace`、`move`、`copy`、`test`；JSON Pointer 支持 `~0`/`~1`，拒绝危险对象键、非法数组索引和未知操作。`revision` 是服务维护字段，非 `test` patch 不得直接修改。
-2. **乐观锁与并发**：`base_rev` 必须是非负整数；写入时在独占 `.lock` 下重新读取当前文件并比较 revision，进程内同一路径再串行排队。匹配才应用 patch；冲突返回结构化结果，不改主文件、不生成快照。
+2. **乐观锁与并发**：`base_rev` 必须是非负整数；写入时在独占 `.lock` 下重新读取当前文件并比较 revision，进程内同一路径再串行排队。匹配才应用 patch；冲突返回结构化结果，不改主文件、不生成快照。残留锁回收见 D30。
 3. **快照**：成功替换前写入项目 `.history/`，保存旧 figures.json；默认保留最近 10 份，超出滚动清理。主文件采用临时文件完整写入后 rename；快照或主文件写失败均不推进 revision。
 4. **跨字段校验**：写入前除基础 schema 外检查 document/figure/panel ID 唯一、region/document/page 引用、region_index、caption_refs、asset 身份与有限非退化 bbox。crop 的 asset 回写也通过该唯一写入服务，避免第二套写入口。
-5. **validate 分层**：程序只报告确定性 `errors`/`warnings`；deck 页头、页号、来源、图片身份、图组成员、讲稿缺失属于 error；旧 figures revision、图组 digest 失配、Panel 未引用、图文讲稿不对应属于 warning；outline 只检查存在与 revision，不把发现覆盖和叙事质量伪装成程序判定。
+5. **validate 分层**：程序只报告确定性 `errors`/`warnings`；figures.json 跨字段违例复用第 4 条同一规则，统一报 `FIGURES_INVALID`（D30）；deck 页头、页号、来源、图片身份、图组成员、讲稿缺失属于 error；旧 figures revision、图组 digest 失配、Panel 未引用、图文讲稿不对应属于 warning；outline 只检查存在与 revision，不把发现覆盖和叙事质量伪装成程序判定。
 6. **M1 安全收口**：工具相对路径按 dsh session cwd 解析；panel ID 拒绝路径穿越和 Windows 保留名；PNG 原子替换；PDF 缓存按 size/mtime/ctime 失效；render_pages 对清洗后可能碰撞的源文件名追加稳定短标识。
 
 M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均通过；真实 dsh 安装加载仍待宿主环境验收。
@@ -238,6 +238,14 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **实测**：QCIC 宿主编排发现图片虽设置适配意图，仍被导出路径按元素框拉伸。模型按实际图片宽高比修正 PPTD 图片框后，默认导出检查 0 问题；最终 17 页 PowerPoint 放映未见比例失真，见 [QCIC 验收](verification/m6-cold-start/qcic-source-audit.md)。不据此推定外部插件所有版本都忽略同一选项。
 - **决策**：沿用外部 PPT 工具，在编排层让图片框本身保持源比例，并复验实际导出。skill 和 deck 对接文档补充这一规则；不自建适配器、渲染器或修改科学图像。
 
+## D30 实现收敛：crop 单次回写、残留锁回收、校验同源（2026-10-30）
+
+- **问题**：架构复查发现三处缺陷。crop 遇任一异常即整批不回写、删除暂存 PNG，却仍在 `cropped` 中报告资产路径，agent 会把旧图当成新裁结果；crop 每个 panel 单独写一次 revision，全量裁切产生 N 份快照，按 10 份滚动会冲掉切分阶段的 `.history`；`.lock` 写入了 pid 却无人检查，进程崩溃后的残留锁让之后的写入全部超时。
+- **决策**：crop 将本次新资产路径合成一个 patch，经同一写入入口回写（至多 revision+1）；已登记 asset 的 panel 只在 revision 未变时替换像素，不增加版本。异常项列入 anomalies，不阻断其余 panel，`cropped` 只列实际落盘的资产；写入冲突时丢弃暂存图并报错。锁逻辑合并为 `src/fileLock.ts`，figures.json 与 groups.json 共用；锁内容记录的 pid 已退出，或锁为空且超过 5 秒，即回收。
+- **同源**：validate 复用 `figuresJsonIssues`（与 update_figures 写入前校验同一规则，原先两套规则不一致，validate 漏查负坐标和 asset 路径）；groups.json 解析与成员指纹集中在 `src/groups.ts`，compose_panels 与 validate 共用同一算法。MinerU 换算 `mineruBBoxToPt`/`parseContentList` 经 `./project` 导出，skill 改为调用 helper，不再手算。client figures 类型改由 zod schema 推导。
+- **保留**：jc.md 的 `figures_revision`、自研 RFC 6902 patch 与 jc.md frontmatter 解析不在本次改动范围；三处 frontmatter 解析严格度不同（jc.md 严格、deck/状态卡宽松），合并会改变容错行为，暂不合并。
+- **验证**：104/104 回归（新增 crop 部分异常单次回写、残留锁回收、compose/validate 指纹一致、跨字段违例报告四项；移除无调用方的 `pageSizeFromImage` 用例）、typecheck、build 通过；未在真实宿主重测。
+
 ## 修订记录
 
 - 2026-10-26：初版（D1–D13）。
@@ -257,3 +265,4 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 - 2026-10-30：D28（按用户确认的人机协作场景调整 M6 验收口径）。
 - 2026-10-30：D29（外部 PPT 导出图片框按原图比例适配）。
+- 2026-10-30：D30（crop 单次回写与结果一致、残留锁回收、validate/compose 规则同源，同步修订 D15 与架构 §2、§3、§8）。
