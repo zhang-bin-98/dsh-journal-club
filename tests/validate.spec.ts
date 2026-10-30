@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { validateProject } from '../src/validate/project.ts'
+import { isSourceLineValid, panelMentionTokens } from '../src/validate/markdown.ts'
 
 async function project(deck: string, groups = true) {
   const dir = await mkdtemp(join(tmpdir(), 'jc-validate-'))
@@ -21,6 +22,30 @@ async function project(deck: string, groups = true) {
 const validDeck = `---\nfigures_revision: 2\n---\n\n<!-- page 1 · layout: figure-text -->\n\n# Result\n\n![Figure 1A](figures/fig1_A.png)\n> 来源：Figure 1A · p.1\n\n> 🗣 **讲稿**：这一页讲 Figure 1A。\n`
 
 describe('validate', () => {
+  it('补充图 S 编号来源可通过校验，讲稿不混淆正文图号', async () => {
+    const deck = validDeck.replaceAll('Figure 1A', 'Supplementary Figure S9A')
+    const dir = await project(deck)
+    try {
+      const report = await validateProject(dir)
+      expect(report.errors).toEqual([])
+      expect(report.warnings).toEqual([])
+      expect(panelMentionTokens('Supplementary Figure S9A、Fig. s9B–C、Figure 9A'))
+        .toEqual(expect.arrayContaining(['Figure S9A', 'Figure S9B–C', 'Figure S9', 'Figure 9A', 'Figure 9']))
+      const mismatch = await project(deck.replace('这一页讲 Supplementary Figure S9A', '这一页讲 Figure 9A'))
+      try {
+        expect((await validateProject(mismatch)).warnings.map(item => item.code)).toContain('SPEECH_IMAGE_MISMATCH')
+      } finally { await rm(mismatch, { recursive: true, force: true }) }
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('补充图来源仍要求合法编号和物理页码', () => {
+    expect(isSourceLineValid('> 来源：Figure S9 · p.27 · 补充材料')).toBe(true)
+    expect(isSourceLineValid('> 来源：Supplementary Figure S9A–C · p.27')).toBe(true)
+    expect(isSourceLineValid('> 来源：Supplementary Figure S · p.27')).toBe(false)
+    expect(isSourceLineValid('> 来源：Supplementary Figure S9')).toBe(false)
+    expect(isSourceLineValid('> 来源：Supplementary Figure S9 · p.?')).toBe(false)
+  })
+
   it('合法项目无 errors', async () => {
     const dir = await project(validDeck)
     try {

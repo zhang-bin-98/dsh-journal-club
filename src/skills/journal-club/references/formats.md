@@ -127,6 +127,6 @@ generated: 2026-10-29
 > 🗣 **讲稿**：解释 Figure 1 的问题、实验对照、观察结果、含义与局限。
 ```
 
-新增页面用独立一行 `---` 分隔，页号必须从 1 连续递增。layout 可省略，支持 title/text/figure-full/figure-text/two-figures/panel-grid。每张图后紧跟来源行，不夹空行；讲稿块每页必须有，包括标题页。来源形式为 `> 来源：Figure 3B · p.12`，可加 `· 补充材料`。正文及讲稿保留疑点 `⚠️`；不把疑点标记当成证据。
+新增页面用独立一行 `---` 分隔，页号必须从 1 连续递增。layout 可省略，支持 title/text/figure-full/figure-text/two-figures/panel-grid。每张图后紧跟来源行，不夹空行；讲稿块每页必须有，包括标题页。来源形式为 `> 来源：Figure 3B · p.12`，可加 `· 补充材料`。补充图保留 S 编号，例如 `> 来源：Supplementary Figure S9 · p.27 · 补充材料`，或 `Figure S9`；不为通过校验删图或改成正文图号。正文及讲稿保留疑点 `⚠️`；不把疑点标记当成证据。
 
 运行 `validate` 检查项目并修复 errors；warnings 逐项核对，合理弃图说明原因。outline/deck 引用稳定图片路径；重裁或重拼后复核图像、revision 和 digest，不能仅改确认记录让旧内容看起来有效。

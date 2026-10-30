@@ -97,20 +97,20 @@ export function normalizeAssetReference(value: string): string {
 export function panelMentionTokens(text: string): string[] {
   const result = new Set<string>()
   const patterns = [
-    /(?:Figure|Fig\.?|图)\s*(\d+)\s*([A-Za-z](?:\s*[–—-]\s*[A-Za-z])?)/giu,
-    /(?:Figure|Fig\.?|图)\s*(\d+)/giu,
+    /(?:Figure|Fig\.?|图)\s*(S?\d+)\s*([A-Za-z](?:\s*[–—-]\s*[A-Za-z])?)/giu,
+    /(?:Figure|Fig\.?|图)\s*(S?\d+)/giu,
   ]
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
-      if (match[1] && match[2]) result.add(`Figure ${match[1]}${match[2].replaceAll(/\s+/gu, '')}`)
-      else if (match[1]) result.add(`Figure ${match[1]}`)
+      if (match[1] && match[2]) result.add(`Figure ${match[1].toUpperCase()}${match[2].replaceAll(/\s+/gu, '')}`)
+      else if (match[1]) result.add(`Figure ${match[1].toUpperCase()}`)
     }
   }
   return [...result]
 }
 
 export function isSourceLineValid(line: string): boolean {
-  return /^>\s*来源：(?:Figure|Fig\.?|图)\s*\d+[A-Za-z]*(?:\s*[–—-]\s*[A-Za-z]+)?\s*·\s*p\.\s*\d+(?:\s*·\s*.+)?$/iu.test(line)
+  return /^>\s*来源：(?:Supplementary\s+)?(?:Figure|Fig\.?|图)\s*S?\d+[A-Za-z]*(?:\s*[–—-]\s*[A-Za-z]+)?\s*·\s*p\.\s*\d+(?:\s*·\s*.+)?$/iu.test(line)
 }
 
 export function fileNameOfAsset(asset: string): string {
