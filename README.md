@@ -2,7 +2,7 @@
 
 运行在 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) 内的生物医学论文 **Journal Club 汇报插件**：研究者上传论文 PDF，由 agent 完成解析、图源切分、叙事大纲与幻灯片分页，交付可转 PPTX 的 markdown 版幻灯片（含讲稿与图组）。
 
-> **状态：五个工具、skill 文件链、工作台与 host RPC、项目发现和聊天确认入口已实现；85 项回归、桌面拖框写入及 PPTX 本地工具链已验证。完整论文端到端验收仍未完成。** 本次证据见 [开发验收](docs/verification/development-acceptance.md)、[PPTX 集成](docs/verification/pptx-integration.md)，实现取舍见 [D19](docs/decisions.md#d19-文件链与宿主集成收口2026-10-29)。
+> **状态（2026-10-30）：M6 已按人工协作口径完成。五个工具、skill 文件链、工作台与宿主集成已实现；101 项回归、类型检查和构建通过。QCIC、空间组学、ModT 三篇真实全流程及 aging 新论文演示均已导出 PPTX，完成讲稿、图片和 PowerPoint 检查。** 保留人工检查、调框与整图兜底，不宣称全自动切分或科研结论无误。证据见 [开发验收](docs/verification/development-acceptance.md)、[M6 冷启动验收](docs/verification/m6-cold-start.md) 和 [PPTX 集成](docs/verification/pptx-integration.md)。
 
 ## 开发
 
