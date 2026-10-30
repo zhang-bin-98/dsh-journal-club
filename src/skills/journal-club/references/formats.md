@@ -27,7 +27,7 @@ confirmations:
   deck: { digest: "sha256:<deck 文件摘要>", groups_digest: "sha256:<groups 文件摘要>", at: 2026-10-29T14:00:00+08:00 }
 ```
 
-以上摘要占位符必须替换为真实 64 位值，不能直接保存。更新时保留 requirements 和自由备注。可通过随插件导出的 `dsh-journal-club/project` 模块调用 createJcFile/readJcFile/updateJcFile/digestFile/summarizeProjectConfirmations；运行位置需能解析已安装的插件模块。不能解析时使用宿主文件工具维护同一格式，摘要使用 Node `createHash('sha256').update(await readFile(path)).digest('hex')` 并加 `sha256:` 前缀，不凭记忆计算。
+以上摘要占位符必须替换为真实 64 位值，不能直接保存。更新时保留 requirements 和自由备注。可通过随插件导出的 `dsh-journal-club/project` 模块调用 createJcFile/readJcFile/updateJcFile/digestFile/summarizeProjectConfirmations；运行位置需能解析已安装的插件模块。不能解析时使用宿主文件工具维护同一格式，摘要使用 Node `createHash('sha256').update(await readFile(path)).digest('hex')` 并加 `sha256:` 前缀，不凭记忆计算。始终读取原始字节，不先转换 CRLF/LF、去 BOM 或修剪空白；Python 应用 `read_bytes()`，不要对 `read_text()` 的换行归一化结果计算确认摘要。
 
 ## figures.json
 

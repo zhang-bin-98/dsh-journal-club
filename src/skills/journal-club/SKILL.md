@@ -84,6 +84,8 @@ Only after valid confirmation, invoke the installed `ppt-maker` skill through th
 
 Copy each confirmed speech block in full into its corresponding notes; remove Markdown formatting only, without summarizing or rewriting. Compare exported notes text against every source page, not merely the number of notes. If preview rendering is distorted, preserve the confirmed source and correct slide geometry, record the actual failure, and use an independent available viewer for visual checks. XML geometry checks alone do not establish visual quality; mark visual acceptance pending when no reliable rendering is available.
 
+Preserve each source image's aspect ratio in the actual PPTD image bounds; do not assume a `contain` option is honored by every exporter. If images are stretched, fit their bounds to the source dimensions within the available area, then check and export again without changing scientific pixels or confirmed content.
+
 ## Recovery procedure
 
 1. Read `jc.md` and inspect actual files (`parse/manifest.json`, parse artifacts, `figures.json`, `analysis.md`, `outline.md`, `deck.md`, `groups.json`, assets, and render output). Use artifact contents/completeness as reality; repair only the stage cache when it disagrees.

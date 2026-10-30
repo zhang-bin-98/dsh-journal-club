@@ -1,6 +1,6 @@
 # 文档索引
 
-> dsh-journal-club 权威文档入口。五个工具、skill 与文件链、工作台 host/client 集成及流程入口已实现。98 项回归通过；独立工作区已验证并发编辑保护、删除/排除、缺页恢复与手工补图回填。单篇图源完成逐边修正和整图兜底，24 页新版 PPTX 的备注与图片核验通过，已逐页目视检查；脚注已定向复验，三篇完整冷启动仍未收口，M6 未完成。窄侧栏交互优化与 Gemini 复审见 [UI 修订记录](verification/ui-review-20261030.md)。详见 [开发验收](verification/development-acceptance.md)、[M6 冷启动验收](verification/m6-cold-start.md)、[PPTX 集成](verification/pptx-integration.md) 和 [架构 §7](architecture/架构设计.md#7-分阶段实施计划)。
+> dsh-journal-club 权威文档入口。五个工具、skill 与文件链、工作台 host/client 集成及流程入口已实现。前轮 98 项回归通过；本轮样式热更新修复的 12 项定向回归、类型检查与构建通过。独立工作区已验证并发编辑保护、删除/排除、缺页恢复与手工补图回填。aging 24 页 PPTX 已核验；QCIC 按人工协作口径完成全流程，17 页备注全文、图片及 PowerPoint 全页放映检查通过。空间组学与 ModT 两篇待收口，M6 未完成。新版 UI 已在真实宿主验收，见 [UI 修订记录](verification/ui-review-20261030.md)。详见 [开发验收](verification/development-acceptance.md)、[M6 冷启动验收](verification/m6-cold-start.md)、[PPTX 集成](verification/pptx-integration.md) 和 [架构 §7](architecture/架构设计.md#7-分阶段实施计划)。
 
 ## 阅读顺序
 
