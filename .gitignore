@@ -1,6 +1,7 @@
 # 会话/工具产物
 .zcode/
 .video_agent/
+/out/
 
 # Node
 node_modules/
