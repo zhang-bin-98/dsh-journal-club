@@ -29,7 +29,6 @@ function baseState() {
     title: '联合治疗克服耐药',
     main_paper: 'main.pdf',
     supplement: 'supplement.pdf',
-    figures_revision: 3,
     requirements: '15 分钟，重点临床结果',
     updated: '2026-10-28',
     notes: '# 项目备注\n\n保留自由备注。',
@@ -57,7 +56,6 @@ describe('jc state and confirmation contract', () => {
       title: '联合治疗克服耐药',
       main_paper: 'main.pdf',
       stage: 'figure-review',
-      figures_revision: 3,
       requirements: '15 分钟，重点临床结果',
       updated: '2026-10-28',
       notes: '# 项目备注\n\n保留自由备注。',
@@ -67,11 +65,11 @@ describe('jc state and confirmation contract', () => {
       title: '联合治疗克服耐药',
       main_paper: 'main.pdf',
       stage: 'figure-review',
-      figures_revision: 3,
       requirements: '15 分钟，重点临床结果',
       notes: '# 项目备注\n\n保留自由备注。',
     })
     expect(raw).toContain('confirmations:\n')
+    expect(raw).not.toContain('figures_revision')
     expect(serializeJcMarkdown(parsed)).toBe(raw)
   })
 
@@ -106,6 +104,13 @@ describe('jc state and confirmation contract', () => {
     expect(updated.confirmations.outline?.digest).toBe(digestText(outline))
     const raw = updateJcMarkdown(serializeJcMarkdown(initial), { stage: 'deck' })
     expect(parseJcMarkdown(raw).stage).toBe('deck')
+  })
+
+  it('旧 jc.md 遗留的 figures_revision 仍可解析，下次写入时移除', () => {
+    const legacy = createJcMarkdown(baseState()).replace('requirements:', 'figures_revision: 3\nrequirements:')
+    expect(legacy).toContain('figures_revision: 3')
+    expect(parseJcMarkdown(legacy)).not.toHaveProperty('figures_revision')
+    expect(updateJcMarkdown(legacy, { stage: 'outline' })).not.toContain('figures_revision')
   })
 
   it('读取文档中的未加引号时间、摘要和带逗号的字符串', () => {
@@ -176,9 +181,9 @@ describe('jc state and confirmation contract', () => {
     try {
       const path = join(dir, 'nested', 'jc.md')
       await createJcFile(path, baseState())
-      await updateJcFile(path, { stage: 'figure-review', figures_revision: 4 })
+      await updateJcFile(path, { stage: 'figure-review' })
       expect((await readJcFile(path)).stage).toBe('figure-review')
-      expect((await readFile(path, 'utf8'))).toContain('figures_revision: 4')
+      expect((await readFile(path, 'utf8'))).toContain('stage: figure-review')
       await expect(createJcFile(path, baseState())).rejects.toThrow()
     } finally {
       await rm(dir, { recursive: true, force: true })

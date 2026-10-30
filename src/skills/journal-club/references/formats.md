@@ -9,7 +9,6 @@
 title: 论文标题
 main_paper: main.pdf
 stage: analysis
-figures_revision: 0
 requirements: ""
 confirmations:
 updated: 2026-10-29

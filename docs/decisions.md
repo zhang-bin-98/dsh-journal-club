@@ -244,8 +244,15 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **决策**：crop 将本次新资产路径合成一个 patch，经同一写入入口回写（至多 revision+1）；已登记 asset 的 panel 只在 revision 未变时替换像素，不增加版本。异常项列入 anomalies，不阻断其余 panel，`cropped` 只列实际落盘的资产；写入冲突时丢弃暂存图并报错。锁逻辑合并为 `src/fileLock.ts`，figures.json 与 groups.json 共用；锁内容记录的 pid 已退出，或锁内容为空/不可解析且超过 5 秒（含旧版 compose 留下的空锁），即回收；删除前复读锁内容以缩小多进程同时回收的竞态，仍属尽力而为。rename 落盘失败时，本次新登记但未落盘的 asset 尽力撤回。
 - **同源**：validate 复用 `figuresJsonIssues`（与 update_figures 写入前校验同一规则，原先两套规则不一致，validate 漏查负坐标和 asset 路径）；groups.json 解析与成员指纹集中在 `src/groups.ts`，compose_panels 与 validate 共用同一算法。MinerU 换算 `mineruBBoxToPt`/`parseContentList` 经 `./project` 导出，skill 改为调用 helper，不再手算。client figures 类型改由 zod schema 推导。
 - **顺带修正**：validate 工具摘要原先把 errors 与 warnings 混排、无法区分，改为分组标题；不再随包发布无法独立运行的 `src/tools/composePanels.ts`、`src/layout/**` 源码（其依赖未随包，运行时只用 lib）。
-- **保留**：jc.md 的 `figures_revision`、自研 RFC 6902 patch 与 jc.md frontmatter 解析不在本次改动范围；三处 frontmatter 解析严格度不同（jc.md 严格、deck/状态卡宽松），合并会改变容错行为，暂不合并。
+- **保留**：自研 RFC 6902 patch 与 jc.md frontmatter 解析不换成第三方库——两者已有安全检查与回归，换库仍需自写 revision 保护与严格度约束，收益有限且新增依赖。三处 frontmatter 解析严格度不同（jc.md 严格、deck/状态卡宽松），合并会改变容错行为，暂不合并。jc.md 的 `figures_revision` 处理见 D31。
 - **验证**：106/106 回归（新增 crop 部分异常单次回写、落盘失败撤回 asset、残留锁回收、compose/validate 指纹一致、跨字段违例报告、validate 摘要分组六项；移除无调用方的 `pageSizeFromImage` 用例）、typecheck、build 通过；未在真实宿主重测。
+
+## D31 jc.md 移除 figures_revision（2026-10-30）
+
+- **问题**：jc.md 的 `figures_revision` 与 `confirmations.figures.revision`、figures.json 的 `revision` 重复。代码与状态卡均不读取它，确认有效性只比对确认记录与 figures.json；它只会在图源变更后过期，违背「文件即真相」。
+- **决策**（用户确认彻底删除）：jc.md 契约不再包含该字段，helper 不再接受、校验或写出它。figures 版本只存在于 figures.json 与确认记录。outline.md/deck.md frontmatter 的 `figures_revision` 是另一契约（validate 据此提示引用旧版本），保持不变。
+- **兼容**：jc.md 解析本就忽略未知键，旧项目中遗留的字段可照常读取，下次经 helper 写入时自然移除，无需迁移。
+- **同步**：[对话入口](product/对话入口.md) §5 示例、skill 的 formats.md 与 SKILL 字段清单；新增遗留字段兼容回归。
 
 ## 修订记录
 
@@ -267,3 +274,4 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - 2026-10-30：D28（按用户确认的人机协作场景调整 M6 验收口径）。
 - 2026-10-30：D29（外部 PPT 导出图片框按原图比例适配）。
 - 2026-10-30：D30（crop 单次回写与结果一致、残留锁回收、validate/compose 规则同源，同步修订 D15 与架构 §2、§3、§8）。
+- 2026-10-30：D31（jc.md 移除冗余的 figures_revision，同步修订对话入口 §5、formats.md 与 SKILL）。

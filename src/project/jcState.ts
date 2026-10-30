@@ -36,7 +36,6 @@ export interface JcState {
   main_paper: string
   supplement?: string
   stage: JcStage
-  figures_revision: number
   requirements: string
   confirmations: JcConfirmations
   updated: string
@@ -48,7 +47,6 @@ export interface CreateJcStateInput {
   main_paper: string
   supplement?: string
   stage?: JcStage
-  figures_revision?: number
   requirements?: string
   confirmations?: JcConfirmations
   updated?: string
@@ -61,7 +59,6 @@ export interface JcStateUpdate {
   main_paper?: string
   supplement?: string | null
   stage?: JcStage
-  figures_revision?: number
   requirements?: string
   confirmations?: Partial<JcConfirmations>
   clear_confirmations?: ConfirmationKind[]
@@ -176,7 +173,6 @@ function validateState(input: JcState): JcState {
   assertString(input.main_paper, 'main_paper')
   if (input.supplement !== undefined) assertString(input.supplement, 'supplement')
   assertStage(input.stage)
-  assertInteger(input.figures_revision, 'figures_revision')
   if (typeof input.requirements !== 'string') throw new JcMarkdownError('requirements 必须是字符串')
   if (typeof input.updated !== 'string' || input.updated.length === 0) throw new JcMarkdownError('updated 必须是非空字符串')
   if (typeof input.notes !== 'string') throw new JcMarkdownError('正文备注必须是字符串')
@@ -190,7 +186,6 @@ export function createJcState(input: CreateJcStateInput): JcState {
     main_paper: input.main_paper,
     ...(input.supplement === undefined ? {} : { supplement: input.supplement }),
     stage: input.stage ?? 'analysis',
-    figures_revision: input.figures_revision ?? 0,
     requirements: input.requirements ?? '',
     confirmations: cloneConfirmations(input.confirmations),
     updated: input.updated ?? dateOnly(input.now ?? new Date()),
@@ -219,7 +214,6 @@ export function updateJcState(state: JcState, update: JcStateUpdate): JcState {
     ...(update.main_paper === undefined ? {} : { main_paper: update.main_paper }),
     ...(update.supplement === undefined ? {} : update.supplement === null ? { supplement: undefined } : { supplement: update.supplement }),
     ...(update.stage === undefined ? {} : { stage: update.stage }),
-    ...(update.figures_revision === undefined ? {} : { figures_revision: update.figures_revision }),
     ...(update.requirements === undefined ? {} : { requirements: update.requirements }),
     confirmations,
     ...(update.updated === undefined ? {} : { updated: update.updated }),
@@ -380,7 +374,6 @@ export function parseJcMarkdown(raw: string): JcState {
   const supplement = values.supplement === null || values.supplement === undefined ? undefined : values.supplement
   if (supplement !== undefined) assertString(supplement, 'supplement')
   assertStage(values.stage)
-  assertInteger(values.figures_revision, 'figures_revision')
   if (typeof values.requirements !== 'string') throw new JcMarkdownError('requirements 必须是字符串')
   assertString(values.updated, 'updated')
   const state: JcState = {
@@ -388,7 +381,6 @@ export function parseJcMarkdown(raw: string): JcState {
     main_paper: values.main_paper,
     ...(supplement === undefined ? {} : { supplement }),
     stage: values.stage,
-    figures_revision: values.figures_revision,
     requirements: values.requirements,
     confirmations: validateConfirmations(values.confirmations),
     updated: values.updated,
@@ -425,7 +417,6 @@ export function serializeJcMarkdown(state: JcState): string {
   if (validated.supplement !== undefined) lines.push(`supplement: ${formatScalar(validated.supplement)}`)
   lines.push(
     `stage: ${validated.stage}`,
-    `figures_revision: ${validated.figures_revision}`,
     `requirements: ${formatScalar(validated.requirements)}`,
     'confirmations:',
   )
