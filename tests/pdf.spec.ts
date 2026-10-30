@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { loadImage, createCanvas } from '@napi-rs/canvas'
 import { describe, expect, it } from 'vitest'
 import { PdfFile } from '../src/pdf/pdf.ts'

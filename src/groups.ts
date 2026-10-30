@@ -51,7 +51,7 @@ export async function readGroups(path: string): Promise<GroupsFile> {
   try {
     return parseGroups(raw)
   } catch (error) {
-    throw new Error(`groups.json 无法解析（${path}）：${(error as Error).message}`)
+    throw new Error(`groups.json 无法解析：${(error as Error).message}`)
   }
 }
 

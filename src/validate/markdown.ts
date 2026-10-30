@@ -49,7 +49,7 @@ export function parseDeck(text: string): DeckDocument {
   const body = text.replace(/^---\s*\n[\s\S]*?\n---\s*(?:\n|$)/u, '')
   const rawPages = body.split(/^---\s*$/m)
   const pages: DeckPage[] = []
-  rawPages.forEach((raw, index) => {
+  rawPages.forEach(raw => {
     if (!raw.trim()) return
     const header = raw.match(PAGE_HEADER)
     const images: DeckImageRef[] = []

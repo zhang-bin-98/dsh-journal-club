@@ -76,7 +76,7 @@ export function partitionRects(kind: LayoutKind, count: number, gap = 12, width 
   return splitGrid(count, width, height, gap)
 }
 
-function scoreLayout(cells: readonly Rect[], images: readonly ImageSize[], canvasWidth = 960, canvasHeight = 540): number {
+function scoreLayout(cells: readonly Rect[], images: readonly ImageSize[]): number {
   const areas = cells.map((cell, index) => {
     const image = images[index]
     if (!image || image.width <= 0 || image.height <= 0) return 0

@@ -2,6 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
+import type { Context } from '@deepseek-ai/cordis'
+import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { registerValidate } from '../src/tools/validate.ts'
 import { validateProject } from '../src/validate/project.ts'
 import { isSourceLineValid, panelMentionTokens } from '../src/validate/markdown.ts'
 
@@ -109,6 +112,23 @@ describe('validate', () => {
       const report = await validateProject(dir)
       expect(report.errors.filter(item => item.code === 'FIGURES_INVALID').map(item => item.message))
         .toEqual([expect.stringContaining('Panel bbox 必须位于关联 region 内')])
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('validate 工具摘要按 errors / warnings 分组列出问题', async () => {
+    const dir = await project(validDeck.replace('figures_revision: 2', 'figures_revision: 1').replace(/\n> 🗣[^\n]*\n/u, '\n'))
+    try {
+      let tool: ToolDefinition | undefined
+      registerValidate({ tools: { register: (definition: ToolDefinition) => { tool = definition } } } as unknown as Context)
+      const value = await tool!.execute({ project_dir: dir }, { signal: new AbortController().signal } as unknown as ToolRunContext)
+      const [part] = tool!.output.render!({ project_dir: dir }, value as never) as { text: string }[]
+      const lines = part!.text.split('\n')
+      const errorsAt = lines.indexOf('errors:')
+      const warningsAt = lines.indexOf('warnings:')
+      expect(errorsAt).toBeGreaterThan(0)
+      expect(warningsAt).toBeGreaterThan(errorsAt)
+      expect(lines.slice(errorsAt + 1, warningsAt).some(line => line.includes('SPEECH_MISSING'))).toBe(true)
+      expect(lines.slice(warningsAt + 1).some(line => line.includes('FIGURES_REVISION_STALE'))).toBe(true)
     } finally { await rm(dir, { recursive: true, force: true }) }
   })
 

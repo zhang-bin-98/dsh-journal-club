@@ -113,7 +113,8 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
         ...['jc.md','analysis.md','outline.md','deck.md'].filter(p => artifacts.includes(p)).map(path => h('button', {key: path, className: styles.secondaryAction, onClick: () => open(path)}, '预览 ' + path)),
         h('button', {className: styles.action, disabled: sending, onClick: () => void followup('继续 journal club；先核对产物和确认记录，再从有效断点恢复。').catch(e => setError(String(e)))}, sending ? '正在发送…' : '继续项目')) : null,
       sent ? h('p', {role: 'status', className: styles.subtitle}, '已发送至聊天，请查看后续回复。') : null,
-      snapshot.jcText ? h('p', {className: styles.subtitle}, snapshot.jcText.replace(/^---[\s\S]*?---/u, '').trim().slice(0, 240)) : null,
+      // 无 figures 时下方内容区已显示备注摘要，这里不再重复。
+      snapshot.jcText && snapshot.figures ? h('p', {className: styles.subtitle}, snapshot.jcText.replace(/^---[\s\S]*?---/u, '').trim().slice(0, 240)) : null,
     ),
     snapshot.figures ? h('div', {className: styles.root, style: {flex: 1}},
       h('button', {type: 'button', className: styles.secondaryAction, 'aria-expanded': workbenchOpen, onClick: () => setWorkbenchOpen(v => !v)}, workbenchOpen ? '收起图源工作台' : '打开图源工作台'),

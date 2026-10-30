@@ -4,12 +4,13 @@ import { resolveWorkspacePath, workspaceCwd, displayWorkspacePath } from '../pat
 import { validateProject, type ValidationIssue } from '../validate/project.ts'
 
 function renderIssues(title: string, issues: ValidationIssue[]): string[] {
-  return issues.map(item => {
+  if (issues.length === 0) return []
+  return [`${title}:`, ...issues.map(item => {
     const location = [item.path, item.page === undefined ? undefined : `page ${item.page}`, item.panel, item.group]
       .filter(Boolean)
       .join(' · ')
     return `  ${item.code}: ${item.message}${location === '' ? '' : `（${location}）`}`
-  })
+  })]
 }
 
 export function registerValidate(ctx: Context): void {

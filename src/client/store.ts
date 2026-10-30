@@ -166,7 +166,7 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
     const changes = deps.files.changes(deps.sessionId, path, controller.signal)
     void (async () => {
       try {
-        for await (const change of changes) {
+        for await (const _change of changes) {
           if (controller.signal.aborted || disposed) return
           scheduleRefresh()
         }
