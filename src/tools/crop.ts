@@ -42,6 +42,8 @@ interface StagedAsset {
 
 export interface CropOutcome {
   figures_json: string
+  /** 本次裁切读取的 revision；与 revision 不同说明是本次回写推进的版本。 */
+  base_revision: number
   revision: number
   cropped: CroppedEntry[]
   anomalies: Anomaly[]
@@ -140,7 +142,8 @@ export function registerCrop(ctx: Context): void {
       },
       async execute(args, exec) {
         const cwd = workspaceCwd(exec)
-        return cropFigures(resolveWorkspacePath(args.figures_json, cwd), { ids: args.ids, dpi: args.dpi, cwd, signal: exec.signal })
+        const result = await cropFigures(resolveWorkspacePath(args.figures_json, cwd), { ids: args.ids, dpi: args.dpi, cwd, signal: exec.signal })
+        return { figures_json: result.figures_json, revision: result.revision, cropped: result.cropped, anomalies: result.anomalies }
       },
     }),
   )
@@ -304,6 +307,7 @@ export async function cropFigures(
   }
   return {
     figures_json: displayWorkspacePath(absFigures, cwd),
+    base_revision: data.revision,
     revision,
     cropped,
     anomalies,

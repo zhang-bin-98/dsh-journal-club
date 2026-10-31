@@ -126,6 +126,7 @@ export class JournalClubService extends TypertRemoteService {
     const path = await projectFile(cwd, request.figures_json)
     const result = await cropFigures(path, { ids: request.ids, cwd, signal })
     return {
+      base_revision: result.base_revision,
       revision: result.revision,
       cropped: result.cropped.map(item => item.id),
       anomalies: result.anomalies.map(item => ({ id: item.id, kind: item.kind, ...(item.detail === undefined ? {} : { detail: item.detail }) })),

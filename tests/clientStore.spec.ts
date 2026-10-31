@@ -113,6 +113,60 @@ describe('client store 文件与刷新边界', () => {
     }
   })
 
+  it('分页读取期间文件变化时自动重读一次，读到新版本且不报错', async () => {
+    let current = baseFigures
+    let failNext = 0
+    const files = filesOf(() => current)
+    const read = files.read
+    files.read = async (session, path, signal) => {
+      if (path.endsWith('figures.json') && failNext > 0) { failNext -= 1; throw new Error('文件在分页读取期间改变，请刷新。') }
+      return read(session, path, signal)
+    }
+    const store = createProjectStore({ files, sessionId: 'transient-read' })
+    try {
+      await store.refresh()
+      current = { ...baseFigures, revision: 3 }
+      failNext = 1
+      await store.refresh()
+      expect(store.getSnapshot().figures?.revision).toBe(3)
+      expect(store.getSnapshot().error).toBeUndefined()
+    } finally { store.dispose() }
+  })
+
+  it('重试后仍读不到时保留上一份图源与 jc.md 并提示，编辑器不被卸载；文件不存在不重试', async () => {
+    let failing = false
+    let figureReads = 0
+    const files = filesOf(() => baseFigures)
+    const read = files.read
+    files.read = async (session, path, signal) => {
+      if (path.endsWith('figures.json')) figureReads += 1
+      if (failing) throw new Error('gateway/unavailable: 宿主暂不可用')
+      return read(session, path, signal)
+    }
+    const store = createProjectStore({ files, sessionId: 'keep-last' })
+    try {
+      await store.refresh()
+      const before = store.getSnapshot()
+      failing = true
+      figureReads = 0
+      await store.refresh()
+      expect(figureReads).toBe(2)
+      expect(store.getSnapshot().figures).toBe(before.figures)
+      expect(store.getSnapshot().jcText).toBe(before.jcText)
+      expect(store.getSnapshot().versions.figures).toBe(before.versions.figures)
+      expect(store.getSnapshot().error).toContain('显示上次读取的内容')
+      failing = false
+      files.read = async (_session, path) => {
+        if (path.endsWith('figures.json')) figureReads += 1
+        throw new Error(`workspace-file/not-found: ${path}`)
+      }
+      figureReads = 0
+      await store.refresh()
+      expect(figureReads).toBe(1)
+      expect(store.getSnapshot().figures).toBeUndefined()
+    } finally { store.dispose() }
+  })
+
   it('读取尚未完成时收到 watch 变化，自动补读最新 revision', async () => {
     let releaseRead!: () => void
     const firstRead = new Promise<void>(resolve => { releaseRead = resolve })

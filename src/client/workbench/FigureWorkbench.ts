@@ -24,30 +24,44 @@ export function FigureWorkbench(props: FigureWorkbenchProps): ReactElement {
   const [sent, setSent] = useState<string>()
   const sendingRef = useRef(false)
   const [busy, setBusy] = useState(false)
-  const writing = useRef(false)
+  // 写入串行：前一次（如失焦提交的标签）未完成时，后一次（如紧接的拖框）排队，不丢弃。
+  const queue = useRef<Promise<unknown>>(Promise.resolve())
+  // 本端写入造成的版本推进（from → to），且不改变 Panel 下标；排队的编辑据此跨过自己的写入，
+  // 外部修改不在其中，仍由 CAS 报冲突。
+  const ownWrites = useRef(new Map<number, number>())
   const figures = snapshot.figures
-  async function update(patch: readonly JsonPatch[], options: UpdateOptions = {}): Promise<boolean> {
-    if (writing.current || !figures) return false
+  function update(patch: readonly JsonPatch[], options: UpdateOptions = {}): Promise<boolean> {
+    const run = queue.current.then(() => write(patch, options))
+    queue.current = run.catch(() => {})
+    return run
+  }
+  async function write(patch: readonly JsonPatch[], options: UpdateOptions): Promise<boolean> {
+    const current = store.getSnapshot().figures
+    if (!current) return false
     const { figureId, recrop = [] } = options
-    writing.current = true
+    let baseRev = options.baseRev ?? current.revision
+    for (let next = ownWrites.current.get(baseRev); next !== undefined; next = ownWrites.current.get(baseRev)) baseRev = next
     setBusy(true)
     setError(undefined)
     setSent(undefined)
     try {
-      const result = await store.updateFigures({ figures_json: 'figures.json', patch, base_rev: options.baseRev ?? figures.revision })
+      const result = await store.updateFigures({ figures_json: 'figures.json', patch, base_rev: baseRev })
       if (!result.ok) setError({figureId, message: `图源已更新到 revision ${result.revision}，请根据重载后的内容重试；本次修改未覆盖其他修改。`})
+      else if (preservesIndices(patch)) ownWrites.current.set(baseRev, result.revision)
       // 改框后立即从 PDF 重裁：figures/<id>.png 是 agent 读取的图，必须与工作台所见的框一致。
       // 框已保存；重裁失败只提示，不当作编辑失败。
       if (result.ok && recrop.length > 0 && store.cropPanels) {
         try {
           const crop = await store.cropPanels(recrop)
+          // 重裁只登记 asset，不改下标；它基于哪一版推进由 host 报告，夹入的外部修改不会被误认作本端。
+          if (crop.revision !== crop.base_revision) ownWrites.current.set(crop.base_revision, crop.revision)
           if (crop.anomalies.length > 0) setError({figureId, message: `框已保存，但裁切未刷新：${crop.anomalies.map(item => `${item.id} ${item.kind}${item.detail ? `（${item.detail}）` : ''}`).join('；')}。确认图源时会全量重裁。`})
         } catch (cause) { setError({figureId, message: `框已保存，但裁切未刷新：${messageOf(cause)}。确认图源时会全量重裁。`}) }
       }
       await store.refresh()
       return result.ok
     } catch (cause) { setError({figureId, message: messageOf(cause)}); return false }
-    finally { writing.current = false; setBusy(false) }
+    finally { setBusy(false) }
   }
   async function followup(text: string, figureId?: string): Promise<void> {
     if (sendingRef.current) return
@@ -370,6 +384,11 @@ function RegionEditor(props: RegionEditorProps): ReactElement {
       props.figure.caption ? h('details', {className: styles.caption}, h('summary', null, '完整图注'), props.figure.caption.sentences.map((sentence, index) => h('span', {key: index, className: `${styles.captionLine} ${selected?.caption_refs.includes(index) ? styles.captionLineSelected : ''}`}, sentence))) : null)))
 }
 function messageOf(error: unknown): string { return error instanceof Error ? error.message : String(error) }
+
+/** 只替换值或追加到数组末尾的 patch 不移动任何下标，基于旧版本的下标路径在它之后仍指向同一对象。 */
+function preservesIndices(patch: readonly JsonPatch[]): boolean {
+  return patch.every(op => op.op === 'replace' || op.op === 'test' || (op.op === 'add' && op.path.endsWith('/-')))
+}
 
 function flagText(flags: readonly string[]): string {
   const labels: Record<string, string> = {'missing-caption': '图注关联待复核', 'edge-cut': '边缘可能截断', overlap: '可能串入邻图', 'no-label': '标签待核对', 'cross-page': '跨页图待核对'}

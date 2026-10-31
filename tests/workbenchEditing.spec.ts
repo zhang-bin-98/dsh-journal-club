@@ -5,12 +5,13 @@ import { AddFigure } from '../src/client/workbench/AddFigure.ts'
 import { parseFiguresJson } from '../src/figures/schema.ts'
 import { FigureWorkbench } from '../src/client/workbench/FigureWorkbench.ts'
 import { applyJsonPatch } from '../src/figures/figuresStore.ts'
-import type { FiguresFile, ProjectSnapshot, ProjectStore, UpdateFiguresRequest } from '../src/client/types.ts'
+import { createProjectStore } from '../src/client/store.ts'
+import type { FiguresFile, ProjectSnapshot, ProjectStore, UpdateFiguresRequest, WorkspaceFilesPort } from '../src/client/types.ts'
 
 let view: ReactTestRenderer
 afterEach(() => { act(() => view?.unmount()) })
 
-async function mount(options: {region?: [number, number, number, number]; flags?: string[]; onFollowup?: (text: string) => Promise<void>; crop?: 'ok' | 'anomaly' | 'throw'} = {}) {
+async function mount(options: {region?: [number, number, number, number]; flags?: string[]; onFollowup?: (text: string) => Promise<void>; crop?: 'ok' | 'anomaly' | 'throw'; deferWrites?: boolean} = {}) {
   let snapshot: ProjectSnapshot = {
     figures: { version: 1, status: 'draft', revision: 1,
       documents: [{ id: 'main', path: 'main.pdf', role: 'main', pages: 1 }],
@@ -24,7 +25,11 @@ async function mount(options: {region?: [number, number, number, number]; flags?
     snapshot = { ...snapshot, figures, loadedAt: snapshot.loadedAt + 1 }
     listeners.forEach(fn => fn())
   }
+  // deferWrites：写入停在闸门，由测试逐个放行，用于制造"写入进行中又发起编辑"。
+  const gates: (() => void)[] = []
+  const release = async () => { await act(async () => { gates.shift()?.(); await new Promise(resolve => setTimeout(resolve, 0)) }) }
   const updateFigures = vi.fn(async (request: UpdateFiguresRequest) => {
+    if (options.deferWrites) await new Promise<void>(resolve => gates.push(resolve))
     const current = snapshot.figures!
     if (request.base_rev !== current.revision) return { ok: false as const, conflict: true as const, revision: current.revision }
     const next = applyJsonPatch(current, request.patch) as FiguresFile
@@ -34,7 +39,7 @@ async function mount(options: {region?: [number, number, number, number]; flags?
   // 与真实 crop 同语义：新登记 asset 推进 revision，已有 asset 只换像素。
   const cropPanels = vi.fn(async (ids: readonly string[]) => {
     if (options.crop === 'throw') throw new Error('PDF 不可读 fixture')
-    if (options.crop === 'anomaly') return { revision: snapshot.figures!.revision, cropped: [], anomalies: [{ id: ids[0]!, kind: 'bbox-outside-page' }] }
+    if (options.crop === 'anomaly') return { base_revision: snapshot.figures!.revision, revision: snapshot.figures!.revision, cropped: [], anomalies: [{ id: ids[0]!, kind: 'bbox-outside-page' }] }
     const current = snapshot.figures!
     const missing = current.figures.flatMap(f => f.panels).filter(p => ids.includes(p.id) && p.asset === undefined)
     if (missing.length > 0) {
@@ -42,7 +47,7 @@ async function mount(options: {region?: [number, number, number, number]; flags?
         ...f, panels: f.panels.map(p => ids.includes(p.id) && p.asset === undefined ? { ...p, asset: `figures/${p.id}.png` } : p),
       })) })
     }
-    return { revision: snapshot.figures!.revision, cropped: [...ids], anomalies: [] }
+    return { base_revision: current.revision, revision: snapshot.figures!.revision, cropped: [...ids], anomalies: [] }
   })
   const store: ProjectStore = {
     getSnapshot: () => snapshot,
@@ -66,7 +71,7 @@ async function mount(options: {region?: [number, number, number, number]; flags?
       })) })
     })
   }
-  return { store, button, input, externalLabel, updateFigures, cropPanels, loadPage }
+  return { store, button, input, externalLabel, updateFigures, cropPanels, loadPage, release }
 }
 
 describe('工作台编辑期间的文件变更', () => {
@@ -197,6 +202,22 @@ describe('图源工作台的人工核对路径', () => {
     expect(view.root.findAllByProps({role: 'alert'})).toHaveLength(0)
   })
 
+  it('文件刷新换掉 loadPage 时，补图保留同页页图直到重读完成，不打断拖框', async () => {
+    const documents = [{id: 'main', path: 'main.pdf', pages: 12, role: 'main' as const}]
+    const first = vi.fn(async () => ({src: 'p1.png', width: 600, height: 800}))
+    await act(async () => { view = create(h(AddFigure, {documents, busy: false, loadPage: first, update: async () => true})) })
+    await act(async () => { view.root.findAllByType('button')[0]!.props.onClick() })
+    const image = () => view.root.findAllByProps({alt: '补图页图：拖选整图范围'})
+    expect(image().map(node => node.props.src)).toEqual(['p1.png'])
+    let resolve!: (value: {src: string; width: number; height: number}) => void
+    const second = vi.fn(() => new Promise<{src: string; width: number; height: number}>(done => { resolve = done }))
+    act(() => { view.update(h(AddFigure, {documents, busy: false, loadPage: second, update: async () => true})) })
+    expect(second).toHaveBeenCalledWith('main.pdf', 1)
+    expect(image().map(node => node.props.src)).toEqual(['p1.png'])
+    await act(async () => { resolve({src: 'p2.png', width: 600, height: 800}) })
+    expect(image().map(node => node.props.src)).toEqual(['p2.png'])
+  })
+
   it('补图页码清空时保留原页预览且不能把旧框保存到新页', async () => {
     const loadPage = vi.fn(async () => ({src: 'page.png', width: 600, height: 800}))
     await act(async () => { view = create(h(AddFigure, {documents: [{id: 'main', path: 'main.pdf', pages: 12, role: 'main'}], busy: false, loadPage, update: async () => true})) })
@@ -285,6 +306,93 @@ describe('改框后重裁，使 agent 读取的裁切与工作台一致', () => 
     expect(m.updateFigures.mock.calls[1]![0].base_rev).toBe(3)
     expect(m.store.getSnapshot().figures!.figures[0]!.panels[1]!.label).toBe('B')
     expect(view.root.findAllByProps({role: 'alert'})).toHaveLength(0)
+  })
+})
+
+describe('真实 store 的异步读写', () => {
+  it('新增 Panel 后立即改标签：重裁与刷新异步完成，标签按最新版本提交不冲突', async () => {
+    let data: FiguresFile = { version: 1, status: 'draft', revision: 1,
+      documents: [{ id: 'main', path: 'main.pdf', role: 'main', pages: 1 }],
+      figures: [{ id: 'f', label: 'Figure 1', status: 'pending', regions: [{ document: 'main', page: 1, bbox: [0, 0, 600, 800] }],
+        panels: [{ id: 'a', label: 'A', region_index: 0, bbox: [60, 60, 220, 160], caption_refs: [], flags: [], origin: 'auto' }] }] }
+    const tick = () => new Promise(resolve => setTimeout(resolve, 2))
+    const files: WorkspaceFilesPort = {
+      read: async (_session, path) => { await tick(); return path.endsWith('figures.json') ? { text: JSON.stringify(data), version: String(data.revision) } : { text: '备注', version: 'jc' } },
+      readBytes: async () => ({ data: new Uint8Array([1]) }),
+    }
+    const updateFigures = vi.fn(async (request: UpdateFiguresRequest) => {
+      await tick()
+      if (request.base_rev !== data.revision) return { ok: false as const, conflict: true as const, revision: data.revision }
+      data = { ...(applyJsonPatch(data, request.patch) as FiguresFile), revision: data.revision + 1 }
+      return { ok: true as const, conflict: false as const, revision: data.revision }
+    })
+    const cropPanels = vi.fn(async (request: { figures_json: string; ids: readonly string[] }) => {
+      await tick()
+      const base = data.revision
+      data = { ...data, revision: base + 1, figures: data.figures.map(f => ({ ...f, panels: f.panels.map(p => request.ids.includes(p.id) && !p.asset ? { ...p, asset: `figures/${p.id}.png` } : p) })) }
+      return { base_revision: base, revision: data.revision, cropped: [...request.ids], anomalies: [] }
+    })
+    const store = createProjectStore({ files, sessionId: 's', updateFigures: { updateFigures, cropPanels } })
+    try {
+      await act(async () => { await store.refresh() })
+      const loadPage = async () => ({ src: 'page.png', width: 600, height: 800 })
+      await act(async () => {
+        view = create(h(FigureWorkbench, { store, loadPage }), { createNodeMock: () => ({
+          getBoundingClientRect: () => ({ left: 0, top: 0, width: 600, height: 800 }), setPointerCapture: () => {},
+        }) })
+      })
+      const event = (x: number, y: number) => ({clientX: x, clientY: y, pointerId: 1, stopPropagation() {}, preventDefault() {}})
+      const stage = () => view.root.findByProps({'aria-label': '图源编辑画布'})
+      act(() => { view.root.findAllByType('button').find(node => node.children.includes('＋ 添加 Panel'))!.props.onClick() })
+      act(() => { stage().props.onPointerDown(event(300, 200)); stage().props.onPointerMove(event(400, 300)) })
+      act(() => { stage().props.onPointerUp() })
+      const input = () => view.root.findByProps({ 'aria-label': 'Panel 标签' })
+      await act(async () => { await vi.waitFor(() => expect(input().props.autoFocus).toBe(true)) })
+      expect(cropPanels).toHaveBeenCalledTimes(1)
+      act(() => { input().props.onFocus(); input().props.onChange({target: {value: 'B'}}) })
+      await act(async () => { await input().props.onBlur() })
+      expect(updateFigures.mock.calls.map(call => call[0].base_rev)).toEqual([1, 3])
+      expect(data.figures[0]!.panels[1]).toMatchObject({ label: 'B', asset: expect.stringMatching(/^figures\/panel_/u) })
+      expect(data.revision).toBe(4)
+      expect(view.root.findAllByProps({role: 'alert'})).toHaveLength(0)
+    } finally { store.dispose() }
+  })
+})
+
+describe('写入进行中再发起编辑', () => {
+  const event = (x: number, y: number) => ({clientX: x, clientY: y, pointerId: 1, stopPropagation() {}, preventDefault() {}})
+  const stage = () => view.root.findByProps({'aria-label': '图源编辑画布'})
+  const box = () => view.root.findAllByType('div').find(node => node.props.onPointerDown && node.props.title !== undefined)!
+  // 改标签不按 Enter 直接拖框：按下时画布取焦点使标签失焦提交，拖框在标签写入完成前松手。
+  async function labelThenDrag(m: Awaited<ReturnType<typeof mount>>) {
+    act(() => { m.button('A').props.onClick() })
+    act(() => { m.input().props.onFocus(); m.input().props.onChange({target: {value: 'A2'}}) })
+    act(() => { box().props.onPointerDown(event(100, 100)) })
+    act(() => { void m.input().props.onBlur() })
+    await act(async () => { stage().props.onPointerMove(event(120, 100)); stage().props.onPointerUp() })
+    expect(m.updateFigures).toHaveBeenCalledTimes(1)
+  }
+
+  it('拖框排在标签写入之后执行，并跨过本端刚完成的版本，不丢失也不报假冲突', async () => {
+    const m = await mount({deferWrites: true})
+    await labelThenDrag(m)
+    await m.release()
+    await m.release()
+    expect(m.updateFigures.mock.calls.map(call => call[0].base_rev)).toEqual([1, 2])
+    expect(m.store.getSnapshot().figures!.figures[0]!.panels[0]).toMatchObject({label: 'A2', bbox: [80, 60, 240, 160]})
+    expect(m.store.getSnapshot().figures!.revision).toBe(3)
+    expect(view.root.findAllByProps({role: 'alert'})).toHaveLength(0)
+  })
+
+  it('两次本端写入之间夹入外部修改时，排队的拖框仍报冲突且不覆盖', async () => {
+    const m = await mount({deferWrites: true})
+    await labelThenDrag(m)
+    await m.release()
+    await m.externalLabel('agent')
+    await m.release()
+    expect(m.updateFigures.mock.calls[1]![0].base_rev).toBe(2)
+    expect(m.store.getSnapshot().figures!.figures[0]!.panels[0]).toMatchObject({label: 'agent', bbox: [60, 60, 220, 160]})
+    expect(view.root.findByType('article').findByProps({role: 'alert'}).children.join('')).toContain('本次修改未覆盖')
   })
 })
 

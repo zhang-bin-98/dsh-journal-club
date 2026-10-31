@@ -113,12 +113,12 @@ describe('Journal Club host boundary', () => {
         panels: [{ id: 'fig1_A', label: 'A', region_index: 0, bbox: [40, 40, 300, 300], caption_refs: [], flags: [], origin: 'manual' }] }],
     }))
     const request = { figures_json: 'paper/figures.json', ids: ['fig1_A'] }
-    expect(await service.cropPanels('active', request, signal())).toEqual({ revision: 5, cropped: ['fig1_A'], anomalies: [] })
+    expect(await service.cropPanels('active', request, signal())).toEqual({ base_revision: 4, revision: 5, cropped: ['fig1_A'], anomalies: [] })
     const asset = join(workspace, 'paper', 'figures', 'fig1_A.png')
     const first = await readFile(asset)
     // 工作台改框（同一写入服务），再重裁：已有 asset 只换像素、不推进 revision。
     await service.updateFigures('active', { figures_json: 'paper/figures.json', base_rev: 5, patch: [{ op: 'replace', path: '/figures/0/panels/0/bbox', value: [40, 40, 400, 300] }] }, signal())
-    expect(await service.cropPanels('active', request, signal())).toEqual({ revision: 6, cropped: ['fig1_A'], anomalies: [] })
+    expect(await service.cropPanels('active', request, signal())).toEqual({ base_revision: 6, revision: 6, cropped: ['fig1_A'], anomalies: [] })
     const second = await readFile(asset)
     expect(second.equals(first)).toBe(false)
     // 宽度随新框变化（300 DPI：360pt → 1500px），即 agent 读取的图与当前框一致。

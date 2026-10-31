@@ -45,11 +45,12 @@ export function AddFigure(props: Props): ReactElement {
   const frame = useRef<HTMLDivElement>(null)
   const start = useRef<[number, number]>()
   const document = props.documents.find(d => d.id === documentId)
+  // 换文档/换页/手动重读才清空页图；文件刷新只换 loadPage 引用，同页重读期间保留旧图，不打断拖框。
+  useEffect(() => { setImage(undefined); setError(undefined) }, [open, document?.path, page, reload])
   useEffect(() => {
     if (!open || !document || page < 1 || page > document.pages) return
     let active = true
-    setImage(undefined); setError(undefined)
-    void props.loadPage(document.path, page).then(value => { if (active) setImage(value) }).catch(cause => { if (active) setError(String(cause)) })
+    void props.loadPage(document.path, page).then(value => { if (active) { setImage(value); setError(undefined) } }).catch(cause => { if (active) setError(String(cause)) })
     return () => { active = false }
   }, [open, document?.path, page, props.loadPage, reload])
   const pageValid = /^\d+$/.test(pageInput) && Number(pageInput) >= 1 && Number(pageInput) <= (document?.pages ?? 0)

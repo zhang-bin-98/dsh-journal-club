@@ -97,32 +97,42 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
     const root = deps.projectPath
     const figuresPath = pathFor(root, 'figures.json')
     const jcPath = pathFor(root, 'jc.md')
+    // 读取失败（如写入期间分页读到不同版本）多为瞬时，重试一次；文件不存在或已取消不重试。
+    const read = (path: string) => deps.files.read(deps.sessionId, path, controller.signal).catch(error => {
+      if (isAbortError(error) || isMissingResourceError(error) || controller.signal.aborted) throw error
+      return deps.files.read(deps.sessionId, path, controller.signal)
+    })
     try {
-      const [figuresResult, jcResult] = await Promise.allSettled([
-        deps.files.read(deps.sessionId, figuresPath, controller.signal),
-        deps.files.read(deps.sessionId, jcPath, controller.signal),
-      ])
+      const [figuresResult, jcResult] = await Promise.allSettled([read(figuresPath), read(jcPath)])
       if (disposed || controller.signal.aborted || requestRevision !== revision) return
       const previousFigures = snapshot.figures
       let figures: FiguresFile | undefined
       let jcText: string | undefined
       let figuresError: string | undefined
+      // 重试后仍读不到时保留上一份内容并提示，避免卸载编辑器丢掉草稿；内容确实损坏（解析失败）才清空。
+      const readFailed = (result: PromiseSettledResult<unknown>) => result.status === 'rejected' && !isAbortError(result.reason) && !isMissingResourceError(result.reason)
+      const keepFigures = readFailed(figuresResult) && previousFigures !== undefined
+      const keepJc = readFailed(jcResult) && snapshot.jcText !== undefined
       if (figuresResult.status === 'fulfilled') {
         try {
           figures = parseFigures(figuresResult.value.text)
         } catch (error) {
           figuresError = error instanceof Error ? error.message : String(error)
         }
-      } else if (!isAbortError(figuresResult.reason) && !isMissingResourceError(figuresResult.reason)) {
-        figuresError = `无法读取 figures.json：${messageOf(figuresResult.reason)}`
+      } else if (readFailed(figuresResult)) {
+        figures = previousFigures
+        figuresError = keepFigures
+          ? `暂时无法读取 figures.json，显示上次读取的内容：${messageOf(figuresResult.reason)}`
+          : `无法读取 figures.json：${messageOf(figuresResult.reason)}`
       }
       if (jcResult.status === 'fulfilled') jcText = jcResult.value.text
-      else if (!isAbortError(jcResult.reason) && !isMissingResourceError(jcResult.reason)) {
+      else if (readFailed(jcResult)) {
+        jcText = snapshot.jcText
         figuresError ??= `无法读取 jc.md：${messageOf(jcResult.reason)}`
       }
       const versions: Record<string, string | undefined> = {
-        figures: figuresResult.status === 'fulfilled' ? figuresResult.value.version : undefined,
-        jc: jcResult.status === 'fulfilled' ? jcResult.value.version : undefined,
+        figures: figuresResult.status === 'fulfilled' ? figuresResult.value.version : keepFigures ? snapshot.versions.figures : undefined,
+        jc: jcResult.status === 'fulfilled' ? jcResult.value.version : keepJc ? snapshot.versions.jc : undefined,
       }
       setSnapshot({
         figures,
