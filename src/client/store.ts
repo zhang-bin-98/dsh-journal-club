@@ -1,4 +1,5 @@
 import type {
+  CropPanelsResult,
   FiguresFile,
   FigureRecord,
   ProjectSnapshot,
@@ -188,6 +189,14 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
     })
   }
 
+  const port = deps.updateFigures
+  const cropPanels = port?.cropPanels === undefined ? undefined : (ids: readonly string[]): Promise<CropPanelsResult> =>
+    port.cropPanels!({ figures_json: pathFor(deps.projectPath, 'figures.json'), ids }).then(result => {
+      // 资产像素已替换；新登记的 asset 会推进 revision，刷新以取得最新快照。
+      scheduleRefresh()
+      return result
+    })
+
   function readAsset(path: string, signal?: AbortSignal): Promise<string> {
     const cached = assetCache.get(path)
     if (cached !== undefined && signal?.aborted !== true) return cached
@@ -210,6 +219,7 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
     },
     refresh: scheduleRefreshAsync,
     updateFigures,
+    ...(cropPanels === undefined ? {} : { cropPanels }),
     readAsset,
     dispose: () => {
       if (disposed) return

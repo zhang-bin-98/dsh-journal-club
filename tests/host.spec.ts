@@ -101,4 +101,34 @@ describe('Journal Club host boundary', () => {
     expect(await readFile(path, 'utf8')).toBe(current)
     expect(await readdir(history)).toEqual(entries)
   })
+
+  it('工作台重裁走真实 crop：新资产登记 revision，改框后像素随框更新', async () => {
+    await copyFile(fixturePath(FIXTURES[0]!), join(workspace, 'paper', 'main.pdf'))
+    const path = join(workspace, 'paper', 'figures.json')
+    await writeFile(path, JSON.stringify({
+      ...figures(), revision: 4,
+      documents: [{ id: 'main', path: 'main.pdf', role: 'main', pages: 30 }],
+      figures: [{ id: 'fig1', status: 'pending', regions: [{ document: 'main', page: 2, bbox: [0, 0, 612, 792] }],
+        panels: [{ id: 'fig1_A', label: 'A', region_index: 0, bbox: [40, 40, 300, 300], caption_refs: [], flags: [], origin: 'manual' }] }],
+    }))
+    const request = { figures_json: 'paper/figures.json', ids: ['fig1_A'] }
+    expect(await service.cropPanels('active', request, signal())).toEqual({ revision: 5, cropped: ['fig1_A'], anomalies: [] })
+    const asset = join(workspace, 'paper', 'figures', 'fig1_A.png')
+    const first = await readFile(asset)
+    // 工作台改框（同一写入服务），再重裁：已有 asset 只换像素、不推进 revision。
+    await service.updateFigures('active', { figures_json: 'paper/figures.json', base_rev: 5, patch: [{ op: 'replace', path: '/figures/0/panels/0/bbox', value: [40, 40, 400, 300] }] }, signal())
+    expect(await service.cropPanels('active', request, signal())).toEqual({ revision: 6, cropped: ['fig1_A'], anomalies: [] })
+    const second = await readFile(asset)
+    expect(second.equals(first)).toBe(false)
+    // 宽度随新框变化（300 DPI：360pt → 1500px），即 agent 读取的图与当前框一致。
+    expect(second.readUInt32BE(16)).toBe(1500)
+  })
+
+  it('重裁沿用 host 路径边界，不接受其他文件或空列表', async () => {
+    await writeFile(join(temporary, 'figures.json'), JSON.stringify(figures()))
+    await expect(service.cropPanels('active', { figures_json: '../figures.json', ids: ['a'] }, signal())).rejects.toThrow(/路径超出/)
+    await expect(service.cropPanels('active', { figures_json: 'paper/jc.md', ids: ['a'] }, signal())).rejects.toThrow(/只能裁切 figures.json/)
+    await expect(service.cropPanels('active', { figures_json: 'paper/figures.json', ids: [] }, signal())).rejects.toThrow(/至少指定一个 Panel/)
+    await expect(service.cropPanels('missing', { figures_json: 'paper/figures.json', ids: ['a'] }, signal())).rejects.toThrow(/会话未加载/)
+  })
 })

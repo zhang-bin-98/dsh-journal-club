@@ -1,5 +1,5 @@
 import type { DocumentEntry, Figure, FiguresJson } from '../figures/schema.ts'
-import type { FigureEditResult } from '../types.ts'
+import type { FigureEditResult, PanelCropResult } from '../types.ts'
 
 // figures.json 形状只在 zod schema 中定义一次；client 读取时也用同一 schema 解析。
 export type BBox = readonly [number, number, number, number]
@@ -42,9 +42,13 @@ export interface UpdateFiguresRequest {
 /** 与 host Remote 返回值同一契约。 */
 export type UpdateFiguresResult = FigureEditResult
 
+export type CropPanelsResult = PanelCropResult
+
 /** Host-side RPC; the client never receives a filesystem writer. */
 export interface JournalClubRpcPort {
   updateFigures(request: UpdateFiguresRequest, signal?: AbortSignal): Promise<UpdateFiguresResult>
+  /** 改框后重裁对应 Panel；旧宿主未提供时工作台跳过重裁。 */
+  cropPanels?(request: { readonly figures_json: string; readonly ids: readonly string[] }, signal?: AbortSignal): Promise<CropPanelsResult>
 }
 
 export interface WorkspaceResourceDeps {
@@ -68,6 +72,8 @@ export interface ProjectStore {
   readonly subscribe: (listener: () => void) => () => void
   readonly refresh: () => Promise<void>
   readonly updateFigures: (request: UpdateFiguresRequest) => Promise<UpdateFiguresResult>
+  /** 从 PDF 重裁指定 Panel，让 figures/<id>.png（agent 读取的图）与当前框一致。 */
+  readonly cropPanels?: (ids: readonly string[]) => Promise<CropPanelsResult>
   readonly readAsset: (path: string, signal?: AbortSignal) => Promise<string>
   readonly dispose: () => void
 }

@@ -3,8 +3,9 @@ import { basename, dirname, relative, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { FigureEdit, FigureEditResult, PageInfo } from './types.ts'
+import type { FigureEdit, FigureEditResult, PageInfo, PanelCrop, PanelCropResult } from './types.ts'
 import { updateFiguresFile } from './figures/figuresStore.ts'
+import { cropFigures } from './tools/crop.ts'
 import { assertInsideDirectory, stableStem, pageSuffix } from './paths.ts'
 import { PdfFile } from './pdf/pdf.ts'
 
@@ -40,6 +41,21 @@ export class JournalClubService extends TypertRemoteService {
     const path = await projectFile(sessionCwd(this.ctx, sessionId), request.figures_json)
     const result = await updateFiguresFile(path, request.patch, request.base_rev, { signal })
     return { ok: result.ok, conflict: result.conflict, revision: result.revision }
+  }
+
+  /** Re-crop the given panels after a workbench box edit, through the same crop service as the agent tool. */
+  @Remote({ resources: { session: (sessionId) => sessionId as SessionId } })
+  async cropPanels(sessionId: string, request: PanelCrop, signal: AbortSignal): Promise<PanelCropResult> {
+    if (basename(request.figures_json) !== 'figures.json') throw new Error('工作台只能裁切 figures.json 中的 Panel')
+    if (request.ids.length === 0) throw new Error('至少指定一个 Panel')
+    const cwd = sessionCwd(this.ctx, sessionId)
+    const path = await projectFile(cwd, request.figures_json)
+    const result = await cropFigures(path, { ids: request.ids, cwd, signal })
+    return {
+      revision: result.revision,
+      cropped: result.cropped.map(item => item.id),
+      anomalies: result.anomalies.map(item => ({ id: item.id, kind: item.kind, ...(item.detail === undefined ? {} : { detail: item.detail }) })),
+    }
   }
 
   /** Read true rotated PDF page dimensions and the render_pages asset path. */

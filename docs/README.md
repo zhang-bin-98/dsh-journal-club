@@ -2,6 +2,8 @@
 
 > dsh-journal-club 权威文档入口。2026-10-30，M6 按人工协作口径完成：五个工具、skill 文件链、工作台与宿主集成已实现，101/101 回归、类型检查与构建通过。独立工作区已验证并发编辑保护、删除/排除、缺页恢复及手工补图回填；新版 UI 已在真实宿主验收。QCIC 17 页、空间组学 15 页、ModT 15 页完成三确认点及 PPTX 全流程，aging 24 页新论文演示已核验；备注全文、图片与 PowerPoint 检查证据分别记录，保留人工修正、整图概览和外部预览异常的边界。详见 [UI 修订记录](verification/ui-review-20261030.md)、[开发验收](verification/development-acceptance.md)、[M6 冷启动验收](verification/m6-cold-start.md)、[PPTX 集成](verification/pptx-integration.md) 和 [架构 §7](architecture/架构设计.md#7-分阶段实施计划)。
 
+2026-10-31 图源编辑布局进一步调整为宽区左画布/右预览属性、窄区单栏。类型检查、构建、108/108 回归与独立浏览器检查通过；用户宿主手测后补充可调栏宽，新分隔条待宿主手测，详见 [两栏布局验收](verification/ui-layout-20261031.md)。上方 M6 宿主记录对应此前版本。
+
 ## 阅读顺序
 
 1. **[产品设计](product/产品设计.md)**——产品是什么、闭环、形态、边界（15 分钟读完）。

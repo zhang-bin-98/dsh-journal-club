@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createProjectStore } from './store.ts'
 import { FigureWorkbench } from './workbench/FigureWorkbench.ts'
 import { workspaceFiles, discoverProjects, unwrap, type WorkspaceRemote, type ProjectEntry } from './workspace.ts'
-import type { UpdateFiguresRequest, UpdateFiguresResult } from './types.ts'
+import type { CropPanelsResult, UpdateFiguresRequest, UpdateFiguresResult } from './types.ts'
 import { ensureStyles, styles } from './styles.ts'
 import { projectStatus } from './projectStatus.ts'
 import { sendSessionMessage, type SessionScopes } from './sessionActions.ts'
@@ -20,6 +20,7 @@ interface WorkspaceRemotes {
   workspaceFiles: WorkspaceRemote
   journalClub: {
     updateFigures(sessionId: string, request: UpdateFiguresRequest, signal: AbortSignal): Promise<{ok: true; value: UpdateFiguresResult} | {ok: false; error: {message: string}}>
+    cropPanels?(sessionId: string, request: {figures_json: string; ids: string[]}, signal: AbortSignal): Promise<{ok: true; value: CropPanelsResult} | {ok: false; error: {message: string}}>
     pageInfo(sessionId: string, project: string, document: string, page: number, signal: AbortSignal): Promise<{ok: true; value: {path: string; width: number; height: number}} | {ok: false; error: {message: string}}>
   }
 }
@@ -47,7 +48,13 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
   const files = useMemo(() => workspaceFiles(props.remote.workspaceFiles), [props.remote])
   const store = useMemo(() => createProjectStore({
     files, sessionId: props.sessionId, projectPath,
-    updateFigures: { updateFigures: async request => unwrap(await props.remote.journalClub.updateFigures(props.sessionId, request, new AbortController().signal)) },
+    updateFigures: {
+      updateFigures: async request => unwrap(await props.remote.journalClub.updateFigures(props.sessionId, request, new AbortController().signal)),
+      ...(props.remote.journalClub.cropPanels === undefined ? {} : {
+        cropPanels: async (request: {figures_json: string; ids: readonly string[]}) =>
+          unwrap(await props.remote.journalClub.cropPanels!(props.sessionId, {figures_json: request.figures_json, ids: [...request.ids]}, new AbortController().signal)),
+      }),
+    },
   }), [files, props.remote, props.sessionId, projectPath])
   useEffect(() => () => store.dispose(), [store])
   useEffect(() => { if (navigation !== undefined) setProjectPath(navigation) }, [navigation])

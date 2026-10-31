@@ -1,6 +1,6 @@
 import { createElement as h, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
 import type { BBox, FigureDocument, FigureRecord, JsonPatch } from '../types.ts'
-import type { PageImage } from './FigureWorkbench.ts'
+import type { PageImage, UpdateOptions } from './FigureWorkbench.ts'
 import { bboxStyle, drawWithinRegion } from './geometry.ts'
 import { styles } from '../styles.ts'
 
@@ -8,7 +8,7 @@ interface Props {
   documents: readonly FigureDocument[]
   busy: boolean
   loadPage(document: string, page: number): Promise<PageImage>
-  update(patch: readonly JsonPatch[]): Promise<boolean>
+  update(patch: readonly JsonPatch[], options?: Pick<UpdateOptions, 'recrop'>): Promise<boolean>
   onFollowup?: (text: string) => void | Promise<void>
 }
 
@@ -74,7 +74,7 @@ export function AddFigure(props: Props): ReactElement {
     try {
       id.current ??= `figure_${crypto.randomUUID()}`
       const figure = manualFigure(document, page, bbox, label, id.current)
-      if (!await props.update(addFigurePatch(figure))) return
+      if (!await props.update(addFigurePatch(figure), { recrop: figure.panels.map(panel => panel.id) })) return
       setSaved(figure)
       await complete(figure)
     } catch (cause) { setError(String(cause)) }

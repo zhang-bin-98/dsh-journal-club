@@ -59,6 +59,8 @@ confirmations:
 
 document role 为 main/supplement；Figure status 为 pending/viewed/adjusted/excluded；panel origin 为 auto/manual/agent。bbox 是旋转后 PDF 页的 pt 坐标 `[x0,y0,x1,y1]`，必须有面积且 panel 在所属 region 内。region_index、caption_refs 都从 0 开始，page 从 1 开始。MinerU 的 page_idx 从 0 开始，写入时加 1；bbox 两轴各除以 1000 再乘旋转后页宽/高，不能把它直接当 pt。
 
+跨页图注：`caption.page` 记录起始物理页，`sentences` 包含经原 PDF 核实的续页图注，完整页码范围记入 `analysis.md`；不要为图注续页新增图像 region。MinerU 可能将续文归为下一页的 `page_footnote`/普通文本，Markdown 不一定包含，不能只检查 `image_caption`。接回断句后同步更新受影响的 `caption_refs`，共享说明仅关联实际适用的 Panel。
+
 Panel ID 全局唯一、删除后不复用；不以图号重命名现有 ID。whole-panel 的 label=null 且 bbox 等于 region。裁切后由 `crop` 回填 `asset: "figures/fig1_whole.png"`。修改前读取当前文件，保留用户手工或 agent 调整，不让重识别静默覆盖。确认前将采纳图设为 viewed/adjusted，排除图设为 excluded，重裁所需资产后读取最终 revision，再记录确认。
 
 ## groups.json

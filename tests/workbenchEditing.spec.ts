@@ -10,7 +10,7 @@ import type { FiguresFile, ProjectSnapshot, ProjectStore, UpdateFiguresRequest }
 let view: ReactTestRenderer
 afterEach(() => { act(() => view?.unmount()) })
 
-async function mount(options: {region?: [number, number, number, number]; flags?: string[]; onFollowup?: (text: string) => Promise<void>} = {}) {
+async function mount(options: {region?: [number, number, number, number]; flags?: string[]; onFollowup?: (text: string) => Promise<void>; crop?: 'ok' | 'anomaly' | 'throw'} = {}) {
   let snapshot: ProjectSnapshot = {
     figures: { version: 1, status: 'draft', revision: 1,
       documents: [{ id: 'main', path: 'main.pdf', role: 'main', pages: 1 }],
@@ -31,10 +31,24 @@ async function mount(options: {region?: [number, number, number, number]; flags?
     publish({ ...next, revision: current.revision + 1 })
     return { ok: true as const, conflict: false as const, revision: current.revision + 1 }
   })
+  // 与真实 crop 同语义：新登记 asset 推进 revision，已有 asset 只换像素。
+  const cropPanels = vi.fn(async (ids: readonly string[]) => {
+    if (options.crop === 'throw') throw new Error('PDF 不可读 fixture')
+    if (options.crop === 'anomaly') return { revision: snapshot.figures!.revision, cropped: [], anomalies: [{ id: ids[0]!, kind: 'bbox-outside-page' }] }
+    const current = snapshot.figures!
+    const missing = current.figures.flatMap(f => f.panels).filter(p => ids.includes(p.id) && p.asset === undefined)
+    if (missing.length > 0) {
+      publish({ ...current, revision: current.revision + 1, figures: current.figures.map(f => ({
+        ...f, panels: f.panels.map(p => ids.includes(p.id) && p.asset === undefined ? { ...p, asset: `figures/${p.id}.png` } : p),
+      })) })
+    }
+    return { revision: snapshot.figures!.revision, cropped: [...ids], anomalies: [] }
+  })
   const store: ProjectStore = {
     getSnapshot: () => snapshot,
     subscribe: fn => { listeners.add(fn); return () => { listeners.delete(fn) } },
     refresh: async () => {}, updateFigures, readAsset: async () => '', dispose: () => {},
+    ...(options.crop === undefined ? {} : { cropPanels }),
   }
   const loadPage = vi.fn(async () => ({ src: 'page.png', width: 600, height: 800 }))
   await act(async () => {
@@ -52,7 +66,7 @@ async function mount(options: {region?: [number, number, number, number]; flags?
       })) })
     })
   }
-  return { store, button, input, externalLabel, updateFigures, loadPage }
+  return { store, button, input, externalLabel, updateFigures, cropPanels, loadPage }
 }
 
 describe('工作台编辑期间的文件变更', () => {
@@ -101,6 +115,36 @@ describe('工作台编辑期间的文件变更', () => {
 
 
 describe('图源工作台的人工核对路径', () => {
+  it('分隔条支持拖动、键盘和复位，保留比例且不写图源', async () => {
+    const m = await mount()
+    const divider = () => view.root.findByProps({'aria-label': '调整原图与预览宽度'})
+    const target = {focus() {}, setPointerCapture() {}, parentElement: {getBoundingClientRect: () => ({width: 1000})}}
+    act(() => {
+      divider().props.onPointerDown({button: 0, clientX: 600, pointerId: 1, currentTarget: target, preventDefault() {}})
+      divider().props.onPointerMove({clientX: 400})
+      divider().props.onPointerUp()
+    })
+    expect(divider().props['aria-valuenow']).toBe(40)
+    act(() => { m.button('放大编辑').props.onClick() })
+    act(() => { m.button('关闭').props.onClick() })
+    expect(divider().props['aria-valuenow']).toBe(40)
+    act(() => { divider().props.onKeyDown({key: 'ArrowRight', preventDefault() {}}) })
+    expect(divider().props['aria-valuenow']).toBe(42)
+    act(() => {
+      divider().props.onPointerDown({button: 0, clientX: 400, pointerId: 1, currentTarget: target, preventDefault() {}})
+      divider().props.onPointerMove({clientX: -1000})
+      divider().props.onPointerCancel()
+      divider().props.onPointerMove({clientX: 2000})
+    })
+    expect(divider().props['aria-valuenow']).toBe(30)
+    act(() => { divider().props.onKeyDown({key: 'End', preventDefault() {}}) })
+    expect(divider().props['aria-valuenow']).toBe(75)
+    act(() => { divider().props.onDoubleClick() })
+    expect(divider().props['aria-valuenow']).toBe(60)
+    expect(m.updateFigures).not.toHaveBeenCalled()
+    expect(m.store.getSnapshot().figures!.figures[0]!.panels[0]!.bbox).toEqual([60, 60, 220, 160])
+  })
+
   it('手柄外扩超出初始整图框时，Panel 和 region 在同一 CAS 写入且仍满足包含契约', async () => {
     const m = await mount({region: [50, 50, 230, 170]})
     act(() => { m.button('A').props.onClick() })
@@ -194,6 +238,55 @@ describe('评审反馈回归', () => {
   })
 })
 
+
+describe('改框后重裁，使 agent 读取的裁切与工作台一致', () => {
+  const event = (x: number, y: number) => ({clientX: x, clientY: y, pointerId: 1, stopPropagation() {}, preventDefault() {}})
+  const stage = () => view.root.findByProps({'aria-label': '图源编辑画布'})
+  async function resizeA() {
+    act(() => { view.root.findAllByType('button').find(node => node.children.includes('A'))!.props.onClick() })
+    act(() => { view.root.findByProps({'aria-label': '调整 A se 角'}).props.onPointerDown(event(220, 160)); stage().props.onPointerMove(event(260, 200)) })
+    await act(async () => { stage().props.onPointerUp() })
+  }
+
+  it('调整框保存成功后只重裁该 Panel；改标签不触发重裁', async () => {
+    const m = await mount({crop: 'ok'})
+    await resizeA()
+    expect(m.updateFigures).toHaveBeenCalledTimes(1)
+    expect(m.cropPanels).toHaveBeenCalledTimes(1)
+    expect(m.cropPanels.mock.calls[0]![0]).toEqual(['a'])
+    expect(m.updateFigures.mock.invocationCallOrder[0]!).toBeLessThan(m.cropPanels.mock.invocationCallOrder[0]!)
+    act(() => { m.input().props.onFocus(); m.input().props.onChange({target: {value: 'A2'}}) })
+    await act(async () => { await m.input().props.onBlur() })
+    expect(m.updateFigures).toHaveBeenCalledTimes(2)
+    expect(m.cropPanels).toHaveBeenCalledTimes(1)
+  })
+
+  it('重裁失败时框仍保存，并在该图内提示裁切未刷新', async () => {
+    for (const crop of ['throw', 'anomaly'] as const) {
+      const m = await mount({crop})
+      await resizeA()
+      expect(m.store.getSnapshot().figures!.figures[0]!.panels[0]!.bbox).toEqual([60, 60, 260, 200])
+      expect(view.root.findByType('article').findByProps({role: 'alert'}).children.join('')).toContain('框已保存，但裁切未刷新')
+      act(() => view.unmount())
+    }
+  })
+
+  it('新增 Panel 重裁登记 asset 后，标签提交使用重裁后的 revision 不冲突', async () => {
+    const m = await mount({crop: 'ok'})
+    act(() => { m.button('＋ 添加 Panel').props.onClick() })
+    act(() => { stage().props.onPointerDown(event(300, 200)); stage().props.onPointerMove(event(400, 300)) })
+    await act(async () => { stage().props.onPointerUp() })
+    const added = m.store.getSnapshot().figures!.figures[0]!.panels[1]!
+    expect(m.cropPanels.mock.calls[0]![0]).toEqual([added.id])
+    expect(added.asset).toBe(`figures/${added.id}.png`)
+    expect(m.store.getSnapshot().figures!.revision).toBe(3)
+    act(() => { m.input().props.onFocus(); m.input().props.onChange({target: {value: 'B'}}) })
+    await act(async () => { await m.input().props.onBlur() })
+    expect(m.updateFigures.mock.calls[1]![0].base_rev).toBe(3)
+    expect(m.store.getSnapshot().figures!.figures[0]!.panels[1]!.label).toBe('B')
+    expect(view.root.findAllByProps({role: 'alert'})).toHaveLength(0)
+  })
+})
 
 it('新建标签只自动聚焦一次，删除后恢复同 ID 不恢复旧选中态', async () => {
   const m = await mount()
