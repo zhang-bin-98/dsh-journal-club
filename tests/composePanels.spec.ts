@@ -6,7 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import sharp from 'sharp'
-import { registerComposePanels } from '../src/tools/composePanels.ts'
+import { composePanels, groupsDigest, bytesDigest, registerComposePanels } from '../src/tools/composePanels.ts'
 import { validateProject } from '../src/validate/project.ts'
 
 function captureTool(): ToolDefinition {
@@ -49,13 +49,44 @@ afterEach(async () => {
 })
 
 describe('compose_panels 工具', () => {
+  it('改名不能隐式新建；更新保留原 ID/路径，明确另存才能复制相同成员', async () => {
+    const tool=captureTool()
+    const args={assets:['paper/figures/panel-a.png','paper/figures/panel-b.png'],output:'paper/groups/g3_map.png'}
+    await tool.execute({...args,create:true},runCtx(work))
+    const manifestPath=join(work,'paper/groups.json')
+    const before=await readFile(manifestPath,'utf8'), pngBefore=await readFile(join(work,args.output))
+    await expect(tool.execute({...args,output:'paper/groups/g3_ab.png'},runCtx(work))).rejects.toThrow('原 asset')
+    await expect(stat(join(work,'paper/groups/g3_ab.png'))).rejects.toThrow()
+    await expect(tool.execute({...args,create:true},runCtx(work))).rejects.toThrow('新建不能覆盖')
+    expect(await readFile(manifestPath,'utf8')).toBe(before)
+    expect(await readFile(join(work,args.output))).toEqual(pngBefore)
+    const manifest=JSON.parse(before);manifest.groups[0].id='stable_id'
+    await writeFile(manifestPath,JSON.stringify(manifest))
+    const updated=await tool.execute({...args,assets:['paper/figures/panel-c.png']},runCtx(work)) as {group:string;output:string}
+    expect(updated).toMatchObject({group:'stable_id',output:args.output})
+    expect(JSON.parse(await readFile(manifestPath,'utf8')).groups).toHaveLength(1)
+    await tool.execute({...args,create:true,output:'paper/groups/new_copy.png'},runCtx(work))
+    expect(JSON.parse(await readFile(manifestPath,'utf8')).groups.map((g:{id:string})=>g.id)).toEqual(['stable_id','new_copy'])
+  })
+  it('修改已有拼图在清单中原位更新，只有新拼图追加到末尾', async () => {
+    const tool = captureTool()
+    const compose = (id: string, panel = 'a', create = false) => tool.execute({ create, assets: [`paper/figures/panel-${panel}.png`], output: `paper/groups/${id}.png` }, runCtx(work))
+    for (const id of ['first', 'middle', 'last']) await compose(id, 'a', true)
+    await compose('middle', 'b')
+    await compose('first', 'c')
+    await compose('new', 'a', true)
+    const groups = JSON.parse(await readFile(join(work, 'paper', 'groups.json'), 'utf8')).groups
+    expect(groups.map((g: {id: string}) => g.id)).toEqual(['first', 'middle', 'last', 'new'])
+    expect(groups[0].members).toEqual(['panel-c'])
+    expect(groups[1].members).toEqual(['panel-b'])
+  })
   it('按 1+2 合成 PNG，并登记成员、digest 与布局几何', async () => {
     const tool = captureTool()
     const result = await tool.execute(
       {
         assets: ['paper/figures/panel-a.png', 'paper/figures/panel-b.png', 'paper/figures/panel-c.png'],
         layout_hint: '1+2',
-        output: 'paper/groups/fig1_ABC.png',
+        create: true, output: 'paper/groups/fig1_ABC.png',
       },
       runCtx(work),
     ) as {
@@ -71,10 +102,11 @@ describe('compose_panels 工具', () => {
     expect(result.members).toEqual(['panel-a', 'panel-b', 'panel-c'])
     expect(result.inputs_digest).toMatch(/^sha256:[0-9a-f]{64}$/u)
     expect(result.layout.kind).toBe('1+2')
-    expect(result.layout.geometry).toMatchObject({ width: 960, height: 540 })
+    expect(result.layout.geometry.width).toBeLessThan(960)
+    expect(result.layout.geometry.height).toBeLessThanOrEqual(540)
     expect(result.layout.geometry.cells).toHaveLength(3)
-    expect((await sharp(join(work, result.output)).metadata()).width).toBe(960)
-    expect((await sharp(join(work, result.output)).metadata()).height).toBe(540)
+    expect((await sharp(join(work, result.output)).metadata()).width).toBe(Math.round(result.layout.geometry.width))
+    expect((await sharp(join(work, result.output)).metadata()).height).toBe(Math.round(result.layout.geometry.height))
     const groups = JSON.parse(await readFile(join(work, 'paper', 'groups.json'), 'utf8'))
     expect(groups.version).toBe(1)
     expect(groups.groups).toHaveLength(1)
@@ -84,7 +116,7 @@ describe('compose_panels 工具', () => {
 
   it('compose 登记的成员指纹与 validate 重算一致', async () => {
     await captureTool().execute(
-      { assets: ['paper/figures/panel-a.png', 'paper/figures/panel-b.png'], output: 'paper/groups/fig1_AB.png' },
+      { assets: ['paper/figures/panel-a.png', 'paper/figures/panel-b.png'], create: true, output: 'paper/groups/fig1_AB.png' },
       runCtx(work),
     )
     const panel = (id: string, bbox: number[]) => ({ id, label: id.slice(-1), region_index: 0, bbox, asset: `figures/${id}.png`, caption_refs: [], flags: [], origin: 'auto' })
@@ -107,7 +139,7 @@ describe('compose_panels 工具', () => {
       {
         assets: ['paper/figures/panel-a.png', 'paper/figures/panel-b.png'],
         layout_hint: '1+2',
-        output: 'paper/groups/invalid.png',
+        create: true, output: 'paper/groups/invalid.png',
       },
       runCtx(work),
     )).rejects.toThrow(/1\+2/u)
@@ -120,7 +152,7 @@ describe('compose_panels 工具', () => {
     await expect(tool.execute(
       {
         assets: ['paper/figures/panel-a.png', 'paper/figures/missing.png'],
-        output: 'paper/groups/missing.png',
+        create: true, output: 'paper/groups/missing.png',
       },
       runCtx(work),
     )).rejects.toThrow(/成员图片缺失/u)
@@ -134,7 +166,7 @@ describe('compose_panels 工具', () => {
       {
         assets: ['paper/figures/panel-a.png', 'paper/figures/panel-b.png'],
         layout_hint: 'grid',
-        output: 'paper/groups/rebuild.png',
+        create: true, output: 'paper/groups/rebuild.png',
       },
       runCtx(work),
     ) as { inputs_digest: string }
@@ -154,4 +186,49 @@ describe('compose_panels 工具', () => {
     expect(groups.groups).toHaveLength(1)
     expect(groups.groups[0].inputs_digest).toBe(second.inputs_digest)
   })
+})
+
+
+it('自由布局超过四图、任意比例，像素位置与成员绘制顺序一致', async () => {
+  const assets: string[] = []
+  for (let i = 0; i < 9; i++) {
+    const path = `paper/figures/p${i}.png`
+    await writeFile(join(work, path), await png({ r: i === 0 ? 255 : 0, g: i === 8 ? 255 : 0, b: 0 }, 20, 10))
+    assets.push(path)
+  }
+  const geometry = { width: 137, height: 311, gap: 0, cells: Array.from({length: 9}, (_, i) => ({ member: `p${i}`, x: 5, y: i * 25, width: 40, height: 20 })) }
+  const result = await composePanels({ create:true, assets, geometry, output: 'paper/groups/free.png', scale: 2 }, work, runCtx(work).signal)
+  expect(result.members).toHaveLength(9)
+  expect(result.layout.geometry).toMatchObject({ width: 40, height: 220 })
+  const {data, info} = await sharp(join(work, result.output)).raw().toBuffer({resolveWithObject:true})
+  expect([info.width, info.height]).toEqual([80, 440])
+  const pixel = (x: number, y: number) => Array.from(data.subarray((y * info.width + x) * info.channels, (y * info.width + x) * info.channels + 3))
+  expect(pixel(12, 2)).toEqual([255,0,0])
+  expect(pixel(12,402)).toEqual([0,255,0])
+  expect(pixel(12,45)).toEqual([255,255,255])
+  const automatic = await composePanels({create:true, assets, output:'paper/groups/auto9.png'},work,runCtx(work).signal)
+  expect(automatic.layout.geometry.cells).toHaveLength(9)
+})
+
+it('保存用文件摘要和图源摘要防止覆盖，失败保留原产物', async () => {
+  const args = { assets:['paper/figures/panel-a.png'], output:'paper/groups/saved.png' }
+  await composePanels({...args,create:true},work,runCtx(work).signal)
+  const path = join(work,'paper/groups.json'), base = await groupsDigest(path)
+  const input = bytesDigest(await readFile(join(work,args.assets[0]!)))
+  const original = await readFile(join(work,args.output))
+  await writeFile(path,(await readFile(path,'utf8'))+' ')
+  await expect(composePanels({...args,base_digest:base},work,runCtx(work).signal)).rejects.toThrow(/已被修改/)
+  await writeFile(join(work,args.assets[0]!),await png({r:0,g:0,b:0},40,20))
+  await expect(composePanels({...args,base_digest:await groupsDigest(path), inputs:[{id:'panel-a',digest:input}]},work,runCtx(work).signal)).rejects.toThrow(/图源已变化/)
+  expect(await readFile(join(work,args.output))).toEqual(original)
+})
+
+it('移出旧画布或负坐标的图片完整导出，非法几何不落盘', async () => {
+  const args = { assets:['paper/figures/panel-a.png'], output:'paper/groups/clip.png', geometry:{width:27,height:33,gap:0,cells:[{member:'panel-a',x:-10,y:-5,width:40,height:20}]} }
+  const result = await composePanels({...args,create:true},work,runCtx(work).signal)
+  expect((await sharp(join(work,result.output)).metadata()).width).toBe(40)
+  const old = await readFile(join(work,result.output))
+  await expect(composePanels({...args,geometry:{...args.geometry,width:NaN}},work,runCtx(work).signal)).rejects.toThrow(/宽高/)
+  await expect(composePanels({...args,geometry:{...args.geometry,cells:[{...args.geometry.cells[0]!,member:'wrong'}]}},work,runCtx(work).signal)).rejects.toThrow(/成员/)
+  expect(await readFile(join(work,result.output))).toEqual(old)
 })

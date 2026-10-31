@@ -37,7 +37,7 @@ function baseState() {
 
 describe('jc state and confirmation contract', () => {
   it('随 skill 的项目示例符合实际文件解析契约', async () => {
-    const reference = await readFile(new URL('../src/skills/journal-club/references/formats.md', import.meta.url), 'utf8')
+    const reference = (await readFile(new URL('../src/skills/journal-club/references/formats.md', import.meta.url), 'utf8')).replaceAll('\r\n', '\n')
     const markdown = [...reference.matchAll(/```markdown\n([\s\S]*?)\n```/gu)].map(match => match[1]!)
     const json = [...reference.matchAll(/```json\n([\s\S]*?)\n```/gu)].map(match => match[1]!)
     expect(parseJcMarkdown(markdown[0]!)).toMatchObject({ stage: 'analysis', confirmations: {} })

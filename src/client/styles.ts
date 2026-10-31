@@ -10,6 +10,72 @@
 const STYLE_ID = 'dsh-journal-club-styles'
 
 const css = `
+.jc-composeContainer { container: jc-compose / inline-size; min-width: 0; }
+.jc-composeDialog { box-sizing: border-box; color: inherit; font: inherit; }
+.jc-composeDialogInline { border: 0; margin: 0; padding: 0; position: static; width: 100%; max-width: none; display: block; background: transparent; }
+.jc-composeDialogOpen { width: calc(100vw - 48px); max-width: 1600px; height: calc(100dvh - 48px); max-height: none; padding: 0; border: 1px solid var(--jc-border); border-radius: 12px; background: var(--dsh-alias-bg-layer-1, #fff); }
+.jc-composeDialogOpen::backdrop { background: #0008; }
+.jc-compose { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.jc-compose .jc-header select { max-width: 210px; min-width: 80px; }
+.jc-composeStatus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12px; }
+.jc-composeWarning { color: var(--jc-warning); font-size: 12px; line-height: 1.5; padding: 4px 12px; margin: 0; }
+.jc-composeBody { display: grid; grid-template-columns: 112px minmax(0, 1fr) 230px; gap: 12px; padding: 12px; min-height: 0; flex: 1; }
+.jc-composeBodySolo { grid-template-columns: 112px minmax(0, 1fr); }
+.jc-composeNav { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; max-height: 70dvh; font-size: 12px; }
+.jc-composeGroupList { position: relative; overflow: auto; overscroll-behavior: contain; min-height: 0; flex: 1; padding: 2px; }
+.jc-composeGroup { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-bottom: 8px; padding: 5px; border: 1px solid var(--jc-border); border-radius: 6px; background: var(--jc-surface); color: inherit; cursor: pointer; overflow-wrap: anywhere; text-align: left; }
+.jc-composeGroup[aria-current=true] { border-color: var(--jc-accent); box-shadow: 0 0 0 1px var(--jc-accent); }
+.jc-composeGroup small { color: var(--jc-warning); }
+.jc-composeGroupImage { display: block; height: 70px; width: 100%; background: white; color: #333; }
+.jc-composeGroupImage .jc-materialImage { font-size: 10px; }
+.jc-composeMain { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.jc-composeControls { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 8px; font-size: 12px; }
+.jc-composeViewport { overflow: auto; background: var(--jc-surface-raised); border: 1px solid var(--jc-border); min-height: 240px; height: min(65dvh, 700px); flex: 1; padding: 16px; }
+.jc-composeBoardWrap { margin: 0 auto; box-sizing: border-box; }
+.jc-composeBoard { width: 100%; display: block; background: transparent; touch-action: none; user-select: none; }
+.jc-composeBoard g[data-member] { cursor: move; }
+.jc-composeInspector { display: flex; flex-direction: column; gap: 10px; overflow: hidden; max-height: 70dvh; min-height: 0; min-width: 0; font-size: 12px; }
+.jc-composeInspectorTabs { display: flex; flex: none; gap: 6px; }
+.jc-composeInspectorTabs button { flex: 1; }
+.jc-composeInspectorTabs button[aria-selected=true] { color: var(--jc-accent); border-color: var(--jc-accent); }
+.jc-composeTabPanel { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; }
+.jc-composeMaterialPanel { flex: 1; overflow: hidden; }
+.jc-composeInspector[hidden], .jc-composeTabPanel[hidden] { display: none; }
+.jc-materialBrowser { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
+.jc-materialBrowser > input { min-width: 0; width: 100%; box-sizing: border-box; flex: none; }
+.jc-materialList { overflow: auto; min-height: 0; flex: 1; padding: 2px; }
+.jc-materialGroupTitle { font-size: 12px; margin: 8px 0; }
+.jc-materialCard { border: 1px solid var(--jc-border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+.jc-materialCard[data-selected=true] { border-color: var(--jc-accent); box-shadow: 0 0 0 1px var(--jc-accent); }
+.jc-materialThumbnail { display: block; width: 100%; height: 126px; padding: 6px; border: 0; background: white; color: #333; cursor: zoom-in; }
+.jc-materialThumbnail:focus-visible { outline: 2px solid var(--jc-accent); outline-offset: -2px; }
+.jc-materialImage { display: grid; place-items: center; width: 100%; height: 100%; }
+.jc-materialImage img { display: block; width: 100%; height: 100%; min-height: 0; min-width: 0; object-fit: contain; }
+.jc-materialCaption { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 7px; }
+.jc-materialCaption > span { overflow-wrap: anywhere; min-width: 0; }
+.jc-materialCaption button { flex: none; }
+.jc-materialPreview { width: min(1100px, calc(100vw - 32px)); height: min(820px, calc(100dvh - 48px)); max-width: none; max-height: none; box-sizing: border-box; padding: 0; border: 1px solid var(--jc-border); border-radius: 10px; background: var(--dsh-alias-bg-layer-1, #fff); color: var(--jc-text); }
+.jc-materialPreview::backdrop { background: #0008; }
+.jc-materialPreviewBody { overflow: auto; min-height: 0; flex: 1; background: white; color: #333; padding: 12px; }
+.jc-materialPreviewBody .jc-materialImageOriginal { width: max-content; height: max-content; }
+.jc-composeNumber { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.jc-composeNumber input { width: 130px; min-width: 0; }
+.jc-composeMembers { display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow: auto; flex-shrink: 0; }
+.jc-composeMembers button { text-align: left; overflow-wrap: anywhere; }
+.jc-composeMembers button[aria-pressed=true] { outline: 2px solid var(--jc-accent); outline-offset: -2px; }
+@container jc-compose (max-width: 680px) {
+  .jc-composeDialogInline .jc-composeBody { grid-template-columns: 82px minmax(0, 1fr); gap: 8px; padding: 8px; }
+  .jc-composeDialogInline .jc-composeNav { grid-row: 1 / 3; }
+  .jc-composeDialogInline .jc-composeInspector { grid-column: 2; max-height: 320px; }
+  .jc-composeDialogInline .jc-composeControls { flex-wrap: wrap; }
+}
+@media (max-width: 680px) {
+  .jc-composeDialogOpen .jc-composeBody { grid-template-columns: 82px minmax(0, 1fr); gap: 8px; padding: 8px; }
+  .jc-composeDialogOpen .jc-composeNav { grid-row: 1 / 3; }
+  .jc-composeDialogOpen .jc-composeInspector { grid-column: 2; max-height: 320px; }
+  .jc-composeDialogOpen .jc-composeControls { flex-wrap: wrap; }
+}
+
 .jc-root {
   --jc-border: var(--dsh-alias-border-l2, rgba(128, 128, 128, 0.22));
   --jc-surface: var(--dsh-alias-bg-layer-1, transparent);

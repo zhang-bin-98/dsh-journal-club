@@ -1,6 +1,6 @@
 /**
  * Rectangle primitives adapted from SmartJC's presentation/layout geometry.
- * Coordinates use the 960 x 540 presentation canvas.
+ * Coordinates use the supplied canvas; 960 x 540 is only the default.
  */
 
 export interface Rect {
@@ -68,8 +68,10 @@ function splitOnePlusTwo(width: number, height: number, gap: number): Rect[] {
 }
 
 export function partitionRects(kind: LayoutKind, count: number, gap = 12, width = 960, height = 540): Rect[] {
-  if (!Number.isInteger(count) || count < 1 || count > 4) throw new Error('图组成员数必须为 1 至 4')
-  if (!Number.isFinite(gap) || gap < 0 || gap > 36) throw new Error('布局间距必须在 0 至 36 pt')
+  if (!Number.isInteger(count) || count < 1) throw new Error('图组至少需要一个成员')
+  if (!Number.isFinite(gap) || gap < 0) throw new Error('布局间距必须非负')
+  if (![width, height].every(n => Number.isFinite(n) && n >= 1)) throw new Error('画布尺寸必须至少为 1')
+  gap = Math.min(gap, width / (count * 2), height / (count * 2))
   if (kind === '1+2' && count !== 3) throw new Error('1+2 布局必须恰好包含 3 个成员')
   if (kind === 'rows') return splitRows(count, width, height, gap)
   if (kind === '1+2') return splitOnePlusTwo(width, height, gap)
@@ -95,6 +97,8 @@ export function chooseLayout(
   images: readonly ImageSize[],
   hint?: LayoutKind,
   gap = 12,
+  width = 960,
+  height = 540,
 ): { kind: LayoutKind; cells: Rect[]; score: number } {
   const candidates: LayoutKind[] = hint
     ? [hint]
@@ -102,7 +106,7 @@ export function chooseLayout(
       ? ['1+2', 'grid', 'rows']
       : ['grid', 'rows']
   const ranked = candidates.map(kind => {
-    const cells = partitionRects(kind, count, gap)
+    const cells = partitionRects(kind, count, gap, width, height)
     return { kind, cells, score: scoreLayout(cells, images) }
   })
   ranked.sort((left, right) => right.score - left.score || left.kind.localeCompare(right.kind))

@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -131,4 +132,63 @@ describe('Journal Club host boundary', () => {
     await expect(service.cropPanels('active', { figures_json: 'paper/figures.json', ids: [] }, signal())).rejects.toThrow(/至少指定一个 Panel/)
     await expect(service.cropPanels('missing', { figures_json: 'paper/figures.json', ids: ['a'] }, signal())).rejects.toThrow(/会话未加载/)
   })
+})
+
+
+it('自由拼图 Remote 载入真实图源、保存与恢复几何，拒绝过期版本和路径越界', async () => {
+  const root=join(workspace,'paper')
+  await mkdir(join(root,'figures'))
+  await writeFile(join(root,'figures/a.png'),await sharp({create:{width:120,height:80,channels:4,background:'red'}}).png().toBuffer())
+  await writeFile(join(root,'figures.json'),JSON.stringify({...figures(),figures:[{id:'f',regions:[{document:'main',page:1,bbox:[0,0,100,100]}],panels:[{id:'a',label:'A',region_index:0,bbox:[0,0,100,100],asset:'figures/a.png',caption_refs:[],flags:[],origin:'auto'}]}]}))
+  const state=await service.compositionState('active','paper',signal())
+  expect(state.assets[0]).toMatchObject({id:'a',width:120,height:80})
+  const request={project:'paper',id:'free',base_digest:state.digest,inputs:state.assets.map(a=>({id:a.id,digest:a.digest})),geometry:{width:143,height:267,gap:0,cells:[{member:'a',x:3,y:20,width:120,height:80}]}}
+  const saved=await service.saveComposition('active',{...request,create:true},signal())
+  const restored=await service.compositionState('active','paper',signal())
+  expect(saved.digest).toBe(restored.digest)
+  expect(restored.groups[0]!.stale).toBe(false)
+  const savedGeometry={...request.geometry,width:120,height:80,cells:[{...request.geometry.cells[0]!,x:0,y:0}]}
+  expect(restored.groups[0]!.layout?.geometry).toEqual(savedGeometry)
+  expect((await sharp(join(root,saved.asset)).metadata()).height).toBe(160)
+  const beforeRefresh = await readFile(join(root,saved.asset))
+  await writeFile(join(root,'figures/a.png'),await sharp({create:{width:80,height:120,channels:4,background:'blue'}}).png().toBuffer())
+  const changed=await service.compositionState('active','paper',signal())
+  expect(changed.groups[0]!.stale).toBe(true)
+  expect(changed.groups[0]!.layout?.geometry).toEqual(savedGeometry)
+  await expect(service.saveComposition('active',request,signal())).rejects.toThrow(/已被修改/)
+  // Reading refreshed inputs does not render. Saving explicitly recomposes from new pixels.
+  expect(await readFile(join(root,saved.asset))).toEqual(beforeRefresh)
+  const rebuilt = await service.saveComposition('active',{...request,base_digest:changed.digest,geometry:savedGeometry,inputs:changed.assets.map(a=>({id:a.id,digest:a.digest}))},signal())
+  expect(rebuilt.asset).toBe(saved.asset)
+  const pixels = await sharp(join(root,rebuilt.asset)).raw().toBuffer({resolveWithObject:true})
+  expect(Array.from(pixels.data.subarray(0,3))).toEqual([0,0,255])
+  expect((await service.compositionState('active','paper',signal())).groups[0]!.stale).toBe(false)
+  await expect(service.saveComposition('active',{...request,id:'../../escape'},signal())).rejects.toThrow()
+  await expect(service.compositionState('active','../../outside',signal())).rejects.toThrow()
+  // Deck order is derived on read, independently of manifest insertion order.
+  const manifest=JSON.parse(await readFile(join(root,'groups.json'),'utf8'))
+  for (const id of ['second','unused']) {
+    await copyFile(join(root,saved.asset),join(root,`groups/${id}.png`))
+    manifest.groups.push({...manifest.groups[0],id,asset:`groups/${id}.png`})
+  }
+  await writeFile(join(root,'groups.json'),JSON.stringify(manifest))
+  await writeFile(join(root,'deck.md'),'![2](./groups/second.png)\n\n---\n\n![1](groups/free.png)\n![again](groups/second.png)')
+  const ordered=await service.compositionState('active','paper',signal())
+  expect(ordered.order).toEqual(['second','free'])
+  expect(ordered.groups.map(g=>g.id)).toEqual(['free','second','unused'])
+  await writeFile(join(root,'deck.md'),'![1](groups/free.png)')
+  expect((await service.compositionState('active','paper',signal())).order).toEqual(['free'])
+  await rm(join(root,'groups/free.png'))
+  const deleted=await service.compositionState('active','paper',signal())
+  expect(deleted.order).toEqual([])
+  expect(deleted.groups.map(g=>g.id)).not.toContain('free')
+  const renamed=JSON.parse(await readFile(join(root,'groups.json'),'utf8'))
+  renamed.groups.find((g:{id:string})=>g.id==='second').id='stable'
+  await writeFile(join(root,'groups.json'),JSON.stringify(renamed))
+  const stable=await service.compositionState('active','paper',signal())
+  const update={...request,id:'stable',base_digest:stable.digest,inputs:stable.assets.map(a=>({id:a.id,digest:a.digest}))}
+  const preserved=await service.saveComposition('active',update,signal())
+  expect(preserved.asset).toBe('groups/second.png')
+  expect((await service.compositionState('active','paper',signal())).groups.find(g=>g.id==='stable')?.asset).toBe('groups/second.png')
+  await expect(service.saveComposition('active',{...update,id:'unexpected-copy',base_digest:preserved.digest},signal())).rejects.toThrow('只有新建')
 })

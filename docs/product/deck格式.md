@@ -124,7 +124,7 @@ generated: 2026-10-26
 
 完整流程开始时创建空 `groups.json`（`{"version":1,"groups":[]}`，仅不存在时创建）。无拼图也使用实际文件摘要；已有图组不可覆盖为空。
 
-0. **渲染门槛（确认点 3）**：PPTX 渲染是分钟级昂贵操作，仅在用户确认 deck.md 内容与拼图效果后启动——用户在秒级 markdown 预览中核对每页内容、讲稿、组合图；拼图不满意 → 对话重拼（`compose_panels` 秒级重跑，组合图文件名稳定，deck.md 引用不变自动刷新）。确认动作写入 jc.md confirmations（deck digest + groups digest——文件或图组变更即确认失效）。skill 约定 agent 不跳过该确认直接渲染（用户显式说"直接渲染"除外）。
+0. **渲染门槛（确认点 3）**：PPTX 渲染是分钟级昂贵操作，仅在用户确认 deck.md 内容与拼图效果后启动——用户在秒级 markdown 预览中核对每页内容、讲稿、组合图；拼图不满意 → [自由拼图](自由拼图.md) 页面手调保存，或对话重拼（`compose_panels` 共用导出核心，组合图文件名稳定，deck.md 引用不变；已有 PPTX 必须重新渲染才会更新）。确认动作写入 jc.md confirmations（deck digest + groups digest——文件或图组变更即确认失效）。skill 约定 agent 不跳过该确认直接渲染（用户显式说"直接渲染"除外）。
 1. 先通过宿主 skill 工具调用已安装的 `ppt-maker` skill，再发现实际 `ppt_*` 工具并读取 schema → agent 读 deck.md + 图片 → `ppt_create`（学术主题）→ `ppt_edit` 逐页建元素（文字原生、图片引用、布局按 `layout` 提示）→ 讲稿写入每页备注 → `ppt_check` → `ppt_export`；用户可在其右侧栏工作台继续视觉微调。v1.0.0 在 skill 成功调用后懒注册工具，初始工具列表缺少 `ppt_*` 不能作为未安装的判断，见 [D20](../decisions.md#d20-ppt-工具懒加载2026-10-29)。
 2. skill 加载失败或激活后仍无工具 → 如实报告能力错误；确认未安装时才建议安装。无法继续时可用已可用的 dsh-slides 生成 HTML 版（布局能力降级），或用户手动。
 3. deck.md 是唯一内容源；PPTD 工程是它的派生物，内容修改一律改 deck.md 后重新生成，不双向同步（方向单一，避免分叉）。

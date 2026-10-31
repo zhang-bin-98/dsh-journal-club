@@ -1,8 +1,10 @@
-import { readFile, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { readFile, rm, realpath, mkdir } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import sharp from 'sharp'
+import { fitComposition, imageRect, validateGeometry, type CompositionGeometry, type CompositionLayout } from '../layout/composition.ts'
 import { atomicWriteFile } from '../files.ts'
 import { withFileLock } from '../fileLock.ts'
 import { digestMembers, readGroups, type GroupEntry, type GroupsFile } from '../groups.ts'
@@ -17,7 +19,6 @@ import {
   chooseLayout,
   fitImageToCell,
   type LayoutKind,
-  type Rect,
 } from '../layout/figureGeometry.ts'
 
 const CANVAS_WIDTH = 960
@@ -32,27 +33,20 @@ type InputImage = {
   height: number
 }
 
-type ComposeResult = {
+export interface ComposeRequest {
+  assets: string[]
   output: string
-  group: string
-  members: string[]
-  inputs_digest: string
-  layout: {
-    kind: LayoutKind
-    geometry: {
-      width: number
-      height: number
-      gap: number
-      cells: Array<{
-        member: string
-        x: number
-        y: number
-        width: number
-        height: number
-        content: Rect
-      }>
-    }
-  }
+  create?: boolean
+  layout_hint?: LayoutKind
+  geometry?: CompositionGeometry
+  scale?: number
+  base_digest?: string
+  inputs?: { id: string; digest: string }[]
+}
+export interface ComposeResult { output: string; group: string; members: string[]; inputs_digest: string; groups_digest: string; layout: CompositionLayout }
+export const bytesDigest = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex')
+export async function groupsDigest(path: string): Promise<string> {
+  return bytesDigest(await readFile(path).catch((e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return ''; throw e }))
 }
 
 function throwIfAborted(signal: AbortSignal): void {
@@ -83,33 +77,21 @@ function panelIdFromAsset(path: string): string {
   return id
 }
 
-function round(value: number): number {
-  return Number(value.toFixed(6))
-}
-
-async function composePng(images: readonly InputImage[], cells: readonly Rect[]): Promise<Buffer> {
-  const layers = await Promise.all(images.map(async (image, index) => {
-    const cell = cells[index]
-    if (!cell) throw new Error(`布局分区缺失：${image.id}`)
-    const content = fitImageToCell(cell, image)
-    const resized = await sharp(image.bytes)
-      .resize(Math.max(1, Math.round(content.width)), Math.max(1, Math.round(content.height)), { fit: 'fill' })
-      .png()
-      .toBuffer()
-    return {
-      input: resized,
-      left: Math.max(0, Math.round(content.x)),
-      top: Math.max(0, Math.round(content.y)),
-    }
-  }))
-  return sharp({
-    create: {
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
-      channels: 4,
-      background: { r: 255, g: 255, b: 255, alpha: 1 },
-    },
-  }).composite(layers).png().toBuffer()
+async function composePng(images: readonly InputImage[], geometry: CompositionGeometry, scale: number): Promise<Buffer> {
+  const width = Math.max(1, Math.ceil(geometry.width * scale)), height = Math.max(1, Math.ceil(geometry.height * scale))
+  const layers: { input: Buffer; left: number; top: number }[] = []
+  // Sequential resizing avoids duplicating all decoded inputs in memory at once.
+  for (const image of images) {
+    const cell = geometry.cells.find(c => c.member === image.id)!
+    const content = imageRect(cell, image, scale)
+    const left = Math.max(0, content.x), top = Math.max(0, content.y)
+    const right = Math.min(width, content.x + content.width), bottom = Math.min(height, content.y + content.height)
+    if (right <= left || bottom <= top) continue
+    const input = await sharp(image.bytes).resize(content.width, content.height, { fit: 'fill' })
+      .extract({ left: left - content.x, top: top - content.y, width: right - left, height: bottom - top }).png().toBuffer()
+    layers.push({ input, left, top })
+  }
+  return sharp({ create: { width, height, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }).composite(layers).png().toBuffer()
 }
 
 async function readInput(path: string, id: string): Promise<InputImage> {
@@ -139,8 +121,9 @@ export function registerComposePanels(ctx: Context): void {
     defineTool({
       name: 'compose_panels',
       description:
-        '读取 Panel PNG，按有限矩形分区布局合成为组合图，原子写入 output，并在其项目目录 groups.json 登记成员、内容指纹和布局几何。' +
-        'assets 相对路径基于会话工作目录；支持 grid、rows、1+2（1+2 需要 3 张图）。',
+        '读取 Panel PNG，按建议布局或自由几何合成为组合图，原子写入 output，并在其项目目录 groups.json 登记成员、内容指纹和布局几何。' +
+        '修改默认沿用 groups.json 的原 asset 路径和 ID，禁止为改布局另起文件名；只有用户明确新建/另存时传 create:true。' +
+        'assets 不设张数上限；geometry 可自由指定图片位置；导出按实际图片外缘裁掉外围空白。省略时建议排版；1+2 需3张图。',
       parameters: {
         assets: {
           type: 'array',
@@ -153,10 +136,22 @@ export function registerComposePanels(ctx: Context): void {
           enum: ['grid', 'rows', '1+2'],
           description: '布局提示；缺省时按 SmartJC 有限候选评分选择',
         },
+        geometry: {
+          type: 'object', additionalProperties: false, description: '自由布局；width/height 为正参考尺寸，cells 为图片包围框，图片等比适配。输出按实际图片外缘确定尺寸，保留内部间隔和原图内容；不传时自动排版。',
+          properties: {
+            width: { type: 'number', required: true }, height: { type: 'number', required: true }, gap: { type: 'number', required: true },
+            cells: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+              member: { type: 'string', required: true }, x: { type: 'number', required: true }, y: { type: 'number', required: true }, width: { type: 'number', required: true }, height: { type: 'number', required: true },
+              content: { type: 'object', additionalProperties: false, description: '兼容已保存布局的派生值；导出时依据当前图片重新计算。', properties: { x: { type: 'number', required: true }, y: { type: 'number', required: true }, width: { type: 'number', required: true }, height: { type: 'number', required: true } } },
+            } } },
+          },
+        },
+        scale: { type: 'number', description: '导出倍率，默认1；改变采样尺寸，不改变布局。' },
+        create: { type: 'boolean', description: '仅明确新建/另存拼图时为 true，不能覆盖已存在文件；默认更新现有拼图。' },
         output: {
           type: 'string',
           required: true,
-          description: '组合 PNG 输出路径；通常为 <project>/groups/<group-id>.png',
+          description: '修改时必须使用 groups.json 中原 asset 路径（相对工作区补项目路径）；新建时为 <project>/groups/<group-id>.png。',
         },
       },
       output: {
@@ -168,11 +163,12 @@ export function registerComposePanels(ctx: Context): void {
             group: { type: 'string' },
             members: { type: 'array', items: { type: 'string' } },
             inputs_digest: { type: 'string' },
+            groups_digest: { type: 'string' },
             layout: {
               type: 'object',
               additionalProperties: false,
               properties: {
-                kind: { type: 'string', enum: ['grid', 'rows', '1+2'] },
+                kind: { type: 'string', enum: ['manual', 'grid', 'rows', '1+2'] },
                 geometry: {
                   type: 'object',
                   additionalProperties: false,
@@ -218,86 +214,101 @@ export function registerComposePanels(ctx: Context): void {
         ],
       },
       async execute(args, exec): Promise<ComposeResult> {
-        if (args.assets.length < 1 || args.assets.length > 4) throw new Error('assets 必须包含 1 至 4 个成员')
-        const cwd = workspaceCwd(exec)
-        const outputPath = resolveWorkspacePath(args.output, cwd)
-        if (extname(outputPath).toLocaleLowerCase() !== '.png') throw new Error('output 必须是 PNG 文件')
-        const projectDir = projectDirForOutput(outputPath)
-        const groupsPath = join(projectDir, 'groups.json')
-        const groupAsset = assetReference(projectDir, outputPath)
-        const groupId = basename(outputPath, extname(outputPath))
-        assertSafeAssetId(groupId)
-        assertInsideDirectory(outputPath, projectDir)
-
-        const inputPaths = args.assets.map(asset => resolveWorkspacePath(asset, cwd))
-        const ids = inputPaths.map(panelIdFromAsset)
-        if (new Set(ids).size !== ids.length) throw new Error('assets 包含重复 panel id')
-        for (const [index, inputPath] of inputPaths.entries()) {
-          const projectRelative = relative(projectDir, inputPath).replaceAll('\\', '/')
-          if (!projectRelative.startsWith('figures/') || projectRelative !== `figures/${ids[index]}.png`) {
-            throw new Error(`成员图片必须是项目内 figures/${ids[index]}.png：${inputPath}`)
-          }
-        }
-
-        return withFileLock(groupsPath, async () => {
-          const groups = await readGroups(groupsPath)
-          const previousOutput = await readFile(outputPath).catch(error => {
-            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-            throw error
-          })
-          const images = await Promise.all(inputPaths.map((path, index) => readInput(path, ids[index]!)))
-          throwIfAborted(exec.signal)
-          const chosen = chooseLayout(images.length, images, args.layout_hint as LayoutKind | undefined, GAP_PT)
-          const png = await composePng(images, chosen.cells)
-          throwIfAborted(exec.signal)
-          const inputsDigest = digestMembers(images)
-          const cells = chosen.cells.map((cell, index) => {
-            const image = images[index]!
-            const content = fitImageToCell(cell, image)
-            return {
-              member: image.id,
-              x: round(cell.x),
-              y: round(cell.y),
-              width: round(cell.width),
-              height: round(cell.height),
-              content: {
-                x: round(content.x),
-                y: round(content.y),
-                width: round(content.width),
-                height: round(content.height),
-              },
-            }
-          })
-          const entry: GroupEntry = {
-            id: groupId,
-            asset: groupAsset,
-            members: images.map(image => image.id),
-            inputs_digest: inputsDigest,
-            layout: {
-              kind: chosen.kind,
-              geometry: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, gap: GAP_PT, cells },
-            },
-          }
-          const nextGroups: GroupsFile = {
-            version: 1,
-            groups: [...groups.groups.filter(group => group.id !== groupId), entry],
-          }
-          await atomicWriteFile(outputPath, png)
-          try {
-            await atomicWriteFile(groupsPath, `${JSON.stringify(nextGroups, null, 2)}\n`)
-          } catch (error) {
-            await restoreOutput(outputPath, previousOutput).catch(() => {})
-            throw error
-          }
-          return {
-            output: displayWorkspacePath(outputPath, cwd),
-            group: groupId,
-            members: entry.members,
-            inputs_digest: inputsDigest,
-            layout: entry.layout as ComposeResult['layout'],
-          }
-        }, { signal: exec.signal })
+        return composePanels(args as unknown as ComposeRequest, workspaceCwd(exec), exec.signal)
       },
     }),
   )
+}
+
+/** Shared by the atomic tool and the manual editor Remote. */
+export async function composePanels(args: ComposeRequest, cwd: string, signal: AbortSignal): Promise<ComposeResult> {
+  if (args.assets.length < 1) throw new Error('至少添加一张图片')
+  const scale = args.scale ?? 1
+  if (!Number.isFinite(scale) || scale <= 0) throw new Error('导出倍率必须为正数')
+  const outputPath = resolveWorkspacePath(args.output, cwd)
+  if (extname(outputPath).toLocaleLowerCase() !== '.png') throw new Error('output 必须是 PNG 文件')
+  const projectDir = projectDirForOutput(outputPath)
+  const groupsPath = join(projectDir, 'groups.json')
+  const groupAsset = assetReference(projectDir, outputPath)
+  let groupId = basename(outputPath, extname(outputPath))
+  assertSafeAssetId(groupId)
+  assertInsideDirectory(outputPath, projectDir)
+  assertInsideDirectory(await realpath(projectDir), await realpath(cwd))
+  await mkdir(dirname(outputPath), { recursive: true })
+  assertInsideDirectory(await realpath(dirname(outputPath)), await realpath(projectDir))
+  try { assertInsideDirectory(await realpath(outputPath), await realpath(projectDir)) } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e }
+  try { assertInsideDirectory(await realpath(groupsPath), await realpath(projectDir)) } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e }
+
+  const inputPaths = args.assets.map(asset => resolveWorkspacePath(asset, cwd))
+  const ids = inputPaths.map(panelIdFromAsset)
+  if (new Set(ids).size !== ids.length) throw new Error('assets 包含重复 panel id')
+  for (const [index, inputPath] of inputPaths.entries()) {
+    assertInsideDirectory(await realpath(inputPath).catch(() => inputPath), await realpath(projectDir))
+    const projectRelative = relative(projectDir, inputPath).replaceAll('\\', '/')
+    if (!projectRelative.startsWith('figures/') || projectRelative !== `figures/${ids[index]}.png`) {
+      throw new Error(`成员图片必须是项目内 figures/${ids[index]}.png：${inputPath}`)
+    }
+  }
+
+  return withFileLock(groupsPath, async () => {
+    const initialDigest = await groupsDigest(groupsPath)
+    if (args.base_digest !== undefined && args.base_digest !== initialDigest) throw new Error('拼图文件已被修改，草稿已保留；请重新加载后再保存。')
+    const groups = await readGroups(groupsPath)
+    const previousOutput = await readFile(outputPath).catch(error => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+      throw error
+    })
+    const existing = groups.groups.find(group => group.asset.replaceAll('\\', '/') === groupAsset)
+    if (args.create === true) {
+      if (existing || groups.groups.some(group => group.id === groupId) || previousOutput !== undefined) throw new Error('新建不能覆盖已有拼图；修改请沿用原输出路径并省略 create。')
+    } else {
+      if (!existing) throw new Error('输出路径未登记：修改现有拼图请沿用 groups.json 中的原 asset；只有明确新建才传 create:true。')
+      groupId = existing.id
+      assertSafeAssetId(groupId)
+    }
+    const images = await Promise.all(inputPaths.map((path, index) => readInput(path, ids[index]!)))
+    throwIfAborted(signal)
+    if (args.inputs && (args.inputs.length !== images.length || images.some(image => args.inputs!.find(input => input.id === image.id)?.digest !== bytesDigest(image.bytes)))) throw new Error('图源已变化，草稿已保留；请重新加载图源后再保存。')
+    const explicit = args.geometry === undefined ? undefined : validateGeometry(args.geometry, ids)
+    const chosen = explicit ? undefined : chooseLayout(images.length, images, args.layout_hint, GAP_PT)
+    const reference: CompositionGeometry = explicit ?? { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, gap: GAP_PT, cells: chosen!.cells.map((cell, i) => ({ member: ids[i]!, ...cell })) }
+    const geometry = fitComposition(reference, images)
+    const orderedImages = geometry.cells.map(cell => images.find(image => image.id === cell.member)!)
+    const png = await composePng(orderedImages, geometry, scale)
+    throwIfAborted(signal)
+    const inputsDigest = digestMembers(orderedImages)
+    const cells = geometry.cells.map(cell => ({ ...cell, content: fitImageToCell(cell, images.find(image => image.id === cell.member)!) }))
+    const layout: CompositionLayout = { kind: explicit ? 'manual' : chosen!.kind, geometry: { ...geometry, cells } }
+    if (await groupsDigest(groupsPath) !== initialDigest) throw new Error('拼图文件在导出期间发生变化，请重新加载。')
+    for (const image of images) if (bytesDigest(await readFile(image.path)) !== bytesDigest(image.bytes)) throw new Error('图源在导出期间发生变化，请重新加载。')
+    const entry: GroupEntry = {
+      id: groupId,
+      asset: groupAsset,
+      members: orderedImages.map(image => image.id),
+      inputs_digest: inputsDigest,
+      layout,
+    }
+    const nextGroups: GroupsFile = {
+      version: 1,
+      groups: groups.groups.some(group => group.id === groupId)
+        ? groups.groups.map(group => group.id === groupId ? entry : group)
+        : [...groups.groups, entry],
+    }
+    const nextText = `${JSON.stringify(nextGroups, null, 2)}\n`
+    await atomicWriteFile(outputPath, png)
+    try {
+      await atomicWriteFile(groupsPath, nextText)
+    } catch (error) {
+      await restoreOutput(outputPath, previousOutput).catch(() => {})
+      throw error
+    }
+    return {
+      output: displayWorkspacePath(outputPath, cwd),
+      group: groupId,
+      members: entry.members,
+      inputs_digest: inputsDigest,
+      groups_digest: bytesDigest(nextText),
+      layout: entry.layout as ComposeResult['layout'],
+    }
+  }, { signal })
 }

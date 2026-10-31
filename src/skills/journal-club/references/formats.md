@@ -71,7 +71,7 @@ Panel ID 全局唯一、删除后不复用；不以图号重命名现有 ID。wh
 {"version":1,"groups":[]}
 ```
 
-需要组合图时调用 `compose_panels`，例如 assets 为项目中已有 panel PNG 路径，output 为 `<项目>/groups/fig1_AB.png`，layout_hint 为 grid/rows/1+2。工具登记成员、输入摘要与几何；不要手写伪造这些计算结果。deck 使用 `groups/<id>.png`，引用图组时仍标明所有来源图号和页码。
+需要组合图时调用 `compose_panels`：默认修改现有拼图，output 必须沿用 groups.json 的原 asset 路径，保留原 ID/文件名；只有明确新建或另存时传 create:true，新建不能覆盖已有文件。例如首次新建时 create:true， assets 为项目中已有 panel PNG 路径，output 为 `<项目>/groups/fig1_AB.png`，layout_hint 为 grid/rows/1+2。首次拼图尽量沿用原 Figure 的布局：参考原始页图和 Panel 框，保留左右/上下关系、行列分组、相对大小与阅读顺序；必要时用 geometry 明确排布，不默认改成统一网格。只选部分 Panel 时可收紧空隙，跨 Figure 时尽量保留各图内部关系。用户明确要求与已有手动布局优先，不自动改回原图；确因可读性或叙事需要调整时简要说明。也可传 geometry（width、height、gap、cells；每个 cell 含 member/x/y/width/height）自由定位；width/height 为参考尺寸，不作固定裁切边界，导出尺寸由等比适配后实际图片的外接矩形决定。去掉外围空白，保留内部间隔、相对位置和原图内容；拼图不是整页 PPT。比例与图片数量无固定上限。scale 控制输出倍率，省略为 1；工作台保存用 2。工具登记成员、输入摘要与几何；不要手写伪造这些计算结果。用户可在 JC「自由拼图」页面手调，保存后保留原文件名；重新渲染已有人工布局时，读取并复用 geometry，除非用户要求重新排版。deck 使用 `groups/<id>.png`，引用图组时仍标明所有来源图号和页码。
 
 ## parse/manifest.json
 

@@ -1,4 +1,5 @@
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+export type { CompositionState, CompositionSave, CompositionGeometry, CompositionCell, CompositionAsset, CompositionLayout, CompositionGroup } from './layout/composition.ts'
 
 export interface FigureEdit {
   figures_json: string

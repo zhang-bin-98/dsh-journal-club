@@ -1,3 +1,6 @@
+import { CompositionEditor } from './composition/CompositionEditor.ts'
+import { prepareCompositionReference, type ComposerInputActions } from './composition/conversationReference.ts'
+import type { CompositionSave, CompositionState } from '../layout/composition.ts'
 import { createElement as h, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import { createProjectStore } from './store.ts'
@@ -14,11 +17,15 @@ const TAB_KIND = 'journal-club'
 const GUIDE_ID = 'journal-club'
 interface SidebarTabBodyProps {
   sessionId: string
+  inputActions?: ComposerInputActions
   useTabInfo: () => { tab: { navigation?: { params?: { project?: string } } } }
 }
 interface WorkspaceRemotes {
   workspaceFiles: WorkspaceRemote
   journalClub: {
+    compositionState?(sessionId: string, project: string, signal: AbortSignal): Promise<{ok: true; value: CompositionState} | {ok: false; error: {message: string}}>
+    saveComposition?(sessionId: string, request: CompositionSave, signal: AbortSignal): Promise<{ok: true; value: {digest: string; asset: string}} | {ok: false; error: {message: string}}>
+
     updateFigures(sessionId: string, request: UpdateFiguresRequest, signal: AbortSignal): Promise<{ok: true; value: UpdateFiguresResult} | {ok: false; error: {message: string}}>
     cropPanels?(sessionId: string, request: {figures_json: string; ids: string[]}, signal: AbortSignal): Promise<{ok: true; value: CropPanelsResult} | {ok: false; error: {message: string}}>
     pageInfo(sessionId: string, project: string, document: string, page: number, signal: AbortSignal): Promise<{ok: true; value: {path: string; width: number; height: number}} | {ok: false; error: {message: string}}>
@@ -44,6 +51,9 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const sendingRef = useRef(false)
+  const [view, setView] = useState<'figures' | 'compose'>('figures')
+  const [composerVisited, setComposerVisited] = useState(false)
+  const [compositionRevision, setCompositionRevision] = useState(0)
   const [workbenchOpen, setWorkbenchOpen] = useState(true)
   const files = useMemo(() => workspaceFiles(props.remote.workspaceFiles), [props.remote])
   const store = useMemo(() => createProjectStore({
@@ -57,6 +67,19 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
     },
   }), [files, props.remote, props.sessionId, projectPath])
   useEffect(() => () => store.dispose(), [store])
+  useEffect(() => {
+    if (!composerVisited) return
+    const controller = new AbortController()
+    for (const name of ['groups.json', 'deck.md', 'groups']) void (async () => {
+      try {
+        const path = projectPath ? `${projectPath}/${name}` : name
+        for await (const _ of props.remote.workspaceFiles.changes(props.sessionId, path, controller.signal)) {
+          if (!controller.signal.aborted) setCompositionRevision(n => n + 1)
+        }
+      } catch (cause) { if (!controller.signal.aborted) setError(`拼图监听失败：${String(cause)}`) }
+    })()
+    return () => controller.abort()
+  }, [props.remote, props.sessionId, projectPath, composerVisited])
   useEffect(() => { if (navigation !== undefined) setProjectPath(navigation) }, [navigation])
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const status = projectStatus(snapshot.jcText, artifacts, snapshot.figures)
@@ -100,6 +123,17 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
     const info = unwrap(await props.remote.journalClub.pageInfo(props.sessionId, projectPath, document, page, new AbortController().signal))
     return {...info, src: await store.readAsset(info.path)}
   }, [props.remote, props.sessionId, projectPath, store, snapshot.loadedAt])
+  const loadComposition = useCallback(async () => {
+    if (!props.remote.journalClub.compositionState) throw new Error('宿主尚未加载自由拼图功能，请更新插件并重开页面。')
+    await store.refresh()
+    return unwrap(await props.remote.journalClub.compositionState(props.sessionId, projectPath, new AbortController().signal))
+  }, [props.remote, props.sessionId, projectPath, store])
+  const saveComposition = useCallback(async (request: Omit<CompositionSave, 'project'>) => {
+    if (!props.remote.journalClub.saveComposition) throw new Error('宿主尚未加载自由拼图功能，请更新插件。')
+    const result = unwrap(await props.remote.journalClub.saveComposition(props.sessionId, { ...request, project: projectPath }, new AbortController().signal))
+    await store.refresh()
+    return result
+  }, [props.remote, props.sessionId, projectPath, store])
   const choosingProject = projects.length > 1 && !projectPath && !snapshot.jcText
   const stageLabels: Record<string, string> = {analysis: '论文分析', 'figure-review': '图源核对', outline: '叙事大纲', deck: '幻灯片内容', render: 'PPTX 渲染', done: '交付'}
   return h('div', {className: styles.root, style: {height: '100%'}},
@@ -123,7 +157,13 @@ export function JournalClubTab(props: SidebarTabBodyProps & {remote: WorkspaceRe
       // 无 figures 时下方内容区已显示备注摘要，这里不再重复。
       snapshot.jcText && snapshot.figures ? h('p', {className: styles.subtitle}, snapshot.jcText.replace(/^---[\s\S]*?---/u, '').trim().slice(0, 240)) : null,
     ),
-    snapshot.figures ? h('div', {className: styles.root, style: {flex: 1}},
+    snapshot.figures ? h('div', {className: styles.inlineActions, style: {padding: '8px 12px'}},
+      h('button', {className: styles.secondaryAction, 'aria-pressed': view === 'figures', onClick: () => setView('figures')}, '图源核对'),
+      h('button', {className: styles.secondaryAction, 'aria-pressed': view === 'compose', onClick: () => { setView('compose'); setComposerVisited(true) }}, '自由拼图')) : null,
+    snapshot.figures && composerVisited ? h('div', {hidden: view !== 'compose', style: view === 'compose' ? {flex: 1, minHeight: 0, overflow: 'auto'} : undefined},
+      h(CompositionEditor, {key: `${props.sessionId}:${projectPath}`, revision: compositionRevision, load: loadComposition, save: saveComposition, readAsset: store.readAsset, openAsset: open,
+        prepareConversation: id => prepareCompositionReference(props.inputActions, projectPath, id)})) : null,
+    snapshot.figures ? h('div', {className: styles.root, style: {flex: 1, display: view === 'figures' ? 'flex' : 'none'}},
       h('button', {type: 'button', className: styles.secondaryAction, 'aria-expanded': workbenchOpen, onClick: () => setWorkbenchOpen(v => !v)}, workbenchOpen ? '收起图源工作台' : '打开图源工作台'),
       h('div', {hidden: !workbenchOpen, style: workbenchOpen ? {display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0} : undefined}, h(FigureWorkbench, {key: `${props.sessionId}:${projectPath}`, store, loadPage, onFollowup: followup, onOpenResource: open}))) :
       h('div', {className: styles.content}, h('h2', null, snapshot.jcText ? '项目状态' : choosingProject ? '请选择已有项目' : '还没有当前项目'),
