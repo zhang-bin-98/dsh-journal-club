@@ -1,16 +1,17 @@
 # Journal Club · DeepSeek Harness 文献汇报插件
 
+[![CI](https://github.com/zhang-bin-98/dsh-journal-club/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zhang-bin-98/dsh-journal-club/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js >=22.13](https://img.shields.io/badge/Node.js-%3E%3D22.13-339933?logo=nodedotjs&logoColor=white)](package.json)
+[![DeepSeek Harness Plugin](https://img.shields.io/badge/DeepSeek_Harness-Plugin-4D6BFE)](https://github.com/deepseek-ai/deepseek-harness)
+
 [English](README.md) | [简体中文](README.zh-CN.md)
+
+![Journal Club：论文解析、图源核对、自由拼图、汇报与讲稿](docs/assets/journal-club-banner.zh-CN.png)
 
 从生物医学论文出发，核对原图、自由拼图，生成带讲稿的学术汇报。
 
 本插件运行在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 中。你在对话里提出要求，在右侧工作台检查和调整图片，产物保存在自己的论文目录中，都是普通 Markdown、JSON 和图片文件。
-
-## 工作台预览
-
-![自由拼图工作台](docs/assets/free-composition.png)
-
-使用合成图片的浏览器示例截图，展示拼图编辑区，不包含论文内容。
 
 ## 能做什么
 
@@ -23,21 +24,15 @@
 
 ## 安装
 
-需要 Node.js **≥22.13**（推荐 Node 24 LTS）、npm 和兼容的 DeepSeek Harness。包声明面向 DSH `>=0.2.0-0`；宿主 API 仍处于预发布阶段，不代表所有后续版本均已实测。
+> 首个 npm 版本 `0.0.1` 待发布；发布后可通过以下方式安装。
 
-```sh
-git clone https://github.com/zhang-bin-98/dsh-journal-club.git
-cd dsh-journal-club
-npm ci
-npm run build
-dsh plugin add .
-```
+**桌面端安装（推荐）**：打开 DSH 侧栏的 **插件** → **添加插件**，输入 `dsh-journal-club@0.0.1`。安装完成后点击 **立即启用**。
 
-安装到日常使用的 DSH profile。安装或更新后完整重启宿主，让前后端接口同时生效。
+**对话中安装**：告诉模型：“帮我安装 DSH 插件 `dsh-journal-club@0.0.1`”。
 
-完整论文流程还需要官方 [MinerU CLI](https://github.com/opendatalab/MinerU-Ecosystem)：`npm install -g mineru-open-api`，再通过其 `auth` 命令配置认证。高精度解析会将论文上传至 MinerU；模型处理使用宿主配置的服务商，详见 [数据边界](SECURITY.md)。
+请带上版本号，避免只写包名时安装到较旧的版本。卸载可在插件页面点击 **移除**，已有论文项目文件会保留。
 
-PPTX 导出需要在同一宿主安装 dsh-ppt-maker。未安装时，仍可使用文稿、裁图和拼图产物。本项目**尚未发布到 npm**；已配置 GitHub Release 打包，首个版本发布前请使用上述源码安装方式，不要直接按 npm 包名安装。
+完整论文流程需配置 [MinerU CLI](https://github.com/opendatalab/MinerU-Ecosystem)；PPTX 导出还需 [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker)。命令行安装与开发说明见 [架构文档](docs/architecture/架构设计.md#安装说明)，数据处理范围见 [数据边界](SECURITY.md)。
 
 ## 第一次使用
 
@@ -64,7 +59,7 @@ PPTX 导出需要在同一宿主安装 dsh-ppt-maker。未安装时，仍可使�
 
 ## 开发与文档
 
-[开发与发布](docs/development.md) 说明本地回归、样本下载以及 `main` / 本地 `develop` 工作模式。[文档索引](docs/README.md) 包含产品设计、图源核对、自由拼图、文件契约与架构。
+核心文档保留两份：[产品设计](docs/product/产品设计.md) 说明使用流程与工作台交互；[架构设计](docs/architecture/架构设计.md) 说明文件契约、开发验证与发布流程。
 
 问题反馈请到 [Issues](https://github.com/zhang-bin-98/dsh-journal-club/issues)，优先提供不含私人论文和密钥的最小复现。
 

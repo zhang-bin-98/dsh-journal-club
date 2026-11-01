@@ -1,0 +1,54 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+      RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Verify main ancestry
+        run: git merge-base --is-ancestor HEAD origin/main
+      - name: Download the reviewed release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$RELEASE_TAG" --pattern '*.tgz' --pattern '*.sha256' --dir release
+      - name: Verify package, version and checksum
+        id: asset
+        run: node scripts/verify-release-asset.mjs "$RELEASE_TAG" release
+      - name: Publish the verified tarball
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          ARCHIVE: ${{ steps.asset.outputs.archive }}
+          DIST_TAG: ${{ steps.asset.outputs.dist_tag }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo '::error::Configure the NPM_TOKEN repository secret before publishing to npm.'
+            exit 1
+          fi
+          npm publish "./$ARCHIVE" --ignore-scripts --access public --provenance --tag "$DIST_TAG"

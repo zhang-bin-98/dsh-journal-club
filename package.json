@@ -1,6 +1,6 @@
 {
   "name": "dsh-journal-club",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "DeepSeek Harness 生物医学论文 Journal Club 汇报插件：论文解析、图源切分、叙事大纲与幻灯片分页",
   "type": "module",
   "license": "MIT",
@@ -43,7 +43,8 @@
     "lib/typert.remote-client.d.ts",
     "README.zh-CN.md",
     "SECURITY.md",
-    "docs/assets/free-composition.png"
+    "docs/assets/journal-club-banner.en.png",
+    "docs/assets/journal-club-banner.zh-CN.png"
   ],
   "dsh": {
     "bundle": {
@@ -73,12 +74,13 @@
     "test": "vitest run",
     "pretest": "npm run build",
     "fixtures:fetch": "node scripts/fetch-fixtures.mjs",
-    "verify:pack": "npm run build && node scripts/verify-pack.mjs"
+    "verify:pack": "npm run build && node scripts/verify-pack.mjs",
+    "prepare": "npm run build"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4.0.0",
-    "@deepseek-ai/dsh-tools": ">=0.2.0-0",
-    "@deepseek-ai/dsh-typert-protocol": ">=0.2.1-0"
+    "@deepseek-ai/cordis": ">=4.0.6-alpha.1",
+    "@deepseek-ai/dsh-tools": ">=0.2.2-alpha.2",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.2.2-alpha.2"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.13",
@@ -115,5 +117,9 @@
     "journal-club",
     "biomedical-research",
     "scientific-presentations"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
 }

@@ -1,16 +1,17 @@
 # Journal Club for DeepSeek Harness
 
+[![CI](https://github.com/zhang-bin-98/dsh-journal-club/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zhang-bin-98/dsh-journal-club/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js >=22.13](https://img.shields.io/badge/Node.js-%3E%3D22.13-339933?logo=nodedotjs&logoColor=white)](package.json)
+[![DeepSeek Harness Plugin](https://img.shields.io/badge/DeepSeek_Harness-Plugin-4D6BFE)](https://github.com/deepseek-ai/deepseek-harness)
+
 [English](README.md) | [简体中文](README.zh-CN.md)
+
+![Journal Club: paper, figure review, free composition, slides and speaker notes](docs/assets/journal-club-banner.en.png)
 
 Turn a biomedical research paper into a figure-grounded journal club presentation, with editable crops, free-form compositions and speaker notes.
 
 Journal Club is a plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Ask the agent to work in your own paper folder, review figures in the workbench, and keep the results as ordinary Markdown, JSON and image files.
-
-## Workbench preview
-
-![Free composition workbench](docs/assets/free-composition.png)
-
-Browser fixture screenshot with synthetic figures, illustrating the composition editor; no paper content is included.
 
 ## What you can do
 
@@ -21,23 +22,17 @@ Browser fixture screenshot with synthetic figures, illustrating the composition 
 - Use cropping, composition and validation independently, without starting a complete paper project.
 - Export PPTX through the separately installed [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker) plugin.
 
-## Install from source
+## Install
 
-Requirements: Node.js **22.13 or newer** (Node 24 LTS recommended), npm, and a compatible DeepSeek Harness installation. The package targets DSH `>=0.2.0-0`; host APIs are still prerelease, so verify your installed host rather than assuming all later versions are compatible.
+> The first npm release, `0.0.1`, is pending. After publication, use either option below.
 
-```sh
-git clone https://github.com/zhang-bin-98/dsh-journal-club.git
-cd dsh-journal-club
-npm ci
-npm run build
-dsh plugin add .
-```
+**Desktop (recommended):** go to **Plugins** → **Add plugin** in the DSH sidebar and enter `dsh-journal-club@0.0.1`. Once installed, select **Enable now**.
 
-Use the DSH profile you normally work in. Restart the host after installation or an update so both the client and host APIs reload.
+**In chat:** ask: “Please install the DSH plugin `dsh-journal-club@0.0.1`.”
 
-For the complete workflow, install the official [MinerU CLI](https://github.com/opendatalab/MinerU-Ecosystem) (`npm install -g mineru-open-api`) and configure authentication using its `auth` command. High-precision parsing uploads the paper to MinerU. Model inference uses your host's configured provider. See [data boundaries](SECURITY.md).
+Include the version number to avoid receiving an older version when installing by name alone. To uninstall, use **Remove** on the plugin page; existing paper project files are preserved.
 
-PPTX output additionally needs dsh-ppt-maker in the same host. Without it, the Markdown manuscript, crops and compositions remain usable. This project is **not published to npm**. GitHub Release packaging is configured; until a release is published, use the source checkout above. Do not install by package name alone.
+The full workflow requires the [MinerU CLI](https://github.com/opendatalab/MinerU-Ecosystem), and PPTX export also needs [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker). For CLI installation and development, see [setup details](docs/architecture/架构设计.md#安装说明); see [data boundaries](SECURITY.md) for data handling.
 
 ## Your first journal club
 
@@ -64,7 +59,7 @@ The workbench reads these files. Editing a crop or composition keeps its identit
 
 ## Development and documentation
 
-See [development and release](docs/development.md) for local tests, fixture downloads and the `main` / local `develop` workflow. Architecture and product documents are currently in Chinese: [documentation index](docs/README.md).
+The two core documents are currently in Chinese: [product design](docs/product/产品设计.md) covers workflows and workbench interactions; [architecture](docs/architecture/架构设计.md) covers file contracts, local development, validation and release.
 
 Report reproducible problems in [Issues](https://github.com/zhang-bin-98/dsh-journal-club/issues), using synthetic examples without private papers or credentials.
 

@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600" viewBox="0 0 1600 600">
+  <defs>
+    <style>
+      text { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+      .ink { fill: #172B4D; }
+      .muted { fill: #687A95; }
+      .blue { fill: #3565F5; }
+      .thin { stroke: #B7C6DB; stroke-width: 2; fill: none; stroke-linecap: round; }
+      .plot { stroke: #547CF8; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <filter id="shadow" x="-25%" y="-25%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#203C75" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M1 1 L3.5 3 L1 5" fill="none" stroke="#8CA7D5" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <g id="chart">
+      <path d="M0 0 V55 H88" class="thin"/>
+      <path d="M8 43 L27 33 L44 37 L65 16 L82 8" class="plot"/>
+      <g fill="#547CF8"><circle cx="8" cy="43" r="3"/><circle cx="27" cy="33" r="3"/><circle cx="44" cy="37" r="3"/><circle cx="65" cy="16" r="3"/><circle cx="82" cy="8" r="3"/></g>
+    </g>
+    <g id="bars">
+      <path d="M0 0 V55 H88" class="thin"/>
+      <rect x="10" y="32" width="15" height="23" rx="2" fill="#B4C7FE"/>
+      <rect x="36" y="20" width="15" height="35" rx="2" fill="#83A2FC"/>
+      <rect x="62" y="6" width="15" height="49" rx="2" fill="#547CF8"/>
+      <path d="M10 12 V6 H77 V12" class="thin"/>
+    </g>
+    <g id="handle"><rect x="-4" y="-4" width="8" height="8" rx="2" fill="white" stroke="#3565F5" stroke-width="2"/></g>
+  </defs>
+
+  <rect width="1600" height="600" fill="#FFFFFF"/>
+  <rect x="448" y="48" width="1104" height="504" rx="30" fill="#F3F7FF"/>
+  <path d="M480 116 H1520" stroke="#E2EAF9"/>
+
+  <!-- Identity and promise -->
+  <rect x="64" y="108" width="40" height="5" rx="2.5" fill="#3565F5"/>
+  <text x="64" y="149" font-size="12" font-weight="600" letter-spacing="1.5" class="muted">DEEPSEEK HARNESS PLUGIN</text>
+  <text x="60" y="226" font-size="49" font-weight="700" letter-spacing="-1.6" class="ink">Journal Club</text>
+  <text x="64" y="284" font-size="25" font-weight="500" class="ink">From original figures</text>
+  <text x="64" y="324" font-size="25" font-weight="500" class="ink">to evidence-led talks.</text>
+  <text x="64" y="375" font-size="15" class="muted">AI-assisted. Researcher-controlled.</text>
+  <g font-size="13" fill="#46618B">
+    <rect x="64" y="434" width="82" height="32" rx="16" fill="#EFF4FD"/>
+    <text x="105" y="455" text-anchor="middle">AI-assisted</text>
+    <rect x="154" y="434" width="88" height="32" rx="16" fill="#EFF4FD"/>
+    <text x="198" y="455" text-anchor="middle">Editable</text>
+    <rect x="250" y="434" width="108" height="32" rx="16" fill="#EFF4FD"/>
+    <text x="304" y="455" text-anchor="middle">File-backed</text>
+  </g>
+
+  <text x="482" y="90" font-size="13" font-weight="600" letter-spacing="1" fill="#6680A9">One paper. A workflow you can inspect.</text>
+  <g fill="#8CA7D5" stroke="#8CA7D5" stroke-width="2">
+    <path d="M722 313 H752" marker-end="url(#arrow)"/>
+    <path d="M994 313 H1024" marker-end="url(#arrow)"/>
+    <path d="M1266 313 H1296" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Step 1: read the paper -->
+  <text x="482" y="162" font-size="13" font-weight="600" fill="#8099BD">01</text>
+  <text x="518" y="164" font-size="22" font-weight="700" class="ink">Paper PDF</text>
+  <g filter="url(#shadow)">
+    <rect x="506" y="205" width="178" height="216" rx="10" fill="white" stroke="#D6E1F3"/>
+  </g>
+  <rect x="526" y="224" width="35" height="18" rx="4" fill="#EDF2FF"/>
+  <text x="543.5" y="237" text-anchor="middle" font-size="10" font-weight="700" class="blue">PDF</text>
+  <rect x="526" y="254" width="131" height="5" rx="2.5" fill="#6C7F9C"/>
+  <rect x="526" y="266" width="103" height="5" rx="2.5" fill="#6C7F9C"/>
+  <g stroke="#D9E2F1" stroke-width="3" stroke-linecap="round">
+    <path d="M527 288 H579 M527 299 H583 M527 310 H575 M527 321 H581"/>
+    <path d="M603 288 H660 M603 299 H656 M603 310 H660 M603 321 H649"/>
+  </g>
+  <rect x="525" y="337" width="138" height="63" rx="5" fill="#F3F6FF"/>
+  <use href="#chart" transform="translate(536 347) scale(.67)"/>
+  <use href="#bars" transform="translate(605 347) scale(.56 .67)"/>
+  <text x="594" y="465" font-size="16" text-anchor="middle" class="ink">Understand the evidence</text>
+  <text x="594" y="491" font-size="12" text-anchor="middle" class="muted">Parse the paper · Organize findings</text>
+
+  <!-- Step 2: editable source crops -->
+  <text x="754" y="162" font-size="13" font-weight="600" fill="#8099BD">02</text>
+  <text x="790" y="164" font-size="22" font-weight="700" class="ink">Figure review</text>
+  <rect x="770" y="213" width="198" height="198" rx="10" fill="white" stroke="#D6E1F3" filter="url(#shadow)"/>
+  <text x="786" y="235" font-size="10" font-weight="600" fill="#8292AC">FIGURE 1</text>
+  <path d="M786 247 H951" stroke="#E6ECF6"/>
+  <rect x="782" y="259" width="80" height="62" rx="3" fill="#F3F6FF"/>
+  <rect x="875" y="259" width="80" height="62" rx="3" fill="#F7F9FD"/>
+  <rect x="782" y="333" width="80" height="62" rx="3" fill="#F7F9FD"/>
+  <rect x="875" y="333" width="80" height="62" rx="3" fill="#F7F9FD"/>
+  <use href="#chart" transform="translate(796 275) scale(.63)"/>
+  <use href="#bars" transform="translate(888 275) scale(.63)"/>
+  <use href="#bars" transform="translate(796 349) scale(.63)"/>
+  <use href="#chart" transform="translate(888 349) scale(.63)"/>
+  <rect x="779" y="256" width="86" height="68" rx="3" fill="#3565F5" fill-opacity=".04" stroke="#3565F5" stroke-width="2"/>
+  <rect x="779" y="256" width="19" height="18" rx="2" fill="#3565F5"/>
+  <text x="788.5" y="269" font-size="11" text-anchor="middle" fill="white">A</text>
+  <use href="#handle" x="779" y="256"/><use href="#handle" x="865" y="256"/>
+  <use href="#handle" x="779" y="324"/><use href="#handle" x="865" y="324"/>
+  <text x="880" y="269" font-size="9" class="muted">B</text>
+  <text x="787" y="343" font-size="9" class="muted">C</text>
+  <text x="880" y="343" font-size="9" class="muted">D</text>
+  <text x="866" y="465" font-size="16" text-anchor="middle" class="ink">Check crops and captions</text>
+  <text x="866" y="491" font-size="12" text-anchor="middle" class="muted">Inspect sources · Refine by hand</text>
+
+  <!-- Step 3: unconstrained composition -->
+  <text x="1026" y="162" font-size="13" font-weight="600" fill="#8099BD">03</text>
+  <text x="1062" y="164" font-size="22" font-weight="700" class="ink">Free composition</text>
+  <rect x="1038" y="213" width="202" height="198" rx="10" fill="#E7EDF7"/>
+  <rect x="1051" y="232" width="99" height="81" rx="3" fill="white" stroke="#3565F5" stroke-width="2"/>
+  <text x="1060" y="246" font-size="10" class="blue">A</text>
+  <use href="#chart" transform="translate(1063 255) scale(.83)"/>
+  <use href="#handle" x="1051" y="232"/><use href="#handle" x="1150" y="232"/>
+  <use href="#handle" x="1051" y="313"/><use href="#handle" x="1150" y="313"/>
+  <rect x="1163" y="245" width="64" height="68" rx="3" fill="white" stroke="#D4DEEF"/>
+  <text x="1170" y="258" font-size="9" class="muted">B</text>
+  <use href="#bars" transform="translate(1172 269) scale(.5 .6)"/>
+  <rect x="1051" y="329" width="71" height="65" rx="3" fill="white" stroke="#D4DEEF"/>
+  <text x="1058" y="342" font-size="9" class="muted">C</text>
+  <use href="#bars" transform="translate(1061 350) scale(.58 .6)"/>
+  <rect x="1135" y="329" width="92" height="65" rx="3" fill="white" stroke="#D4DEEF"/>
+  <text x="1142" y="342" font-size="9" class="muted">D</text>
+  <use href="#chart" transform="translate(1146 350) scale(.76 .6)"/>
+  <path d="M1146 302 L1164 324 L1154 323 L1150 333 Z" fill="#3565F5" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
+  <text x="1138" y="465" font-size="16" text-anchor="middle" class="ink">Original figures, your layout</text>
+  <text x="1138" y="491" font-size="12" text-anchor="middle" class="muted">Drag to arrange · Export to bounds</text>
+
+  <!-- Step 4: slides and speaker notes -->
+  <text x="1298" y="162" font-size="13" font-weight="600" fill="#8099BD">04</text>
+  <text x="1334" y="164" font-size="22" font-weight="700" class="ink">Slides &amp; notes</text>
+  <path d="M1380 365 V391 M1358 392 H1402" stroke="#9BB0D1" stroke-width="3" stroke-linecap="round"/>
+  <rect x="1302" y="232" width="197" height="133" rx="8" fill="white" stroke="#CCD9EF" filter="url(#shadow)"/>
+  <rect x="1318" y="248" width="111" height="6" rx="3" fill="#536F9E"/>
+  <rect x="1318" y="263" width="72" height="3" rx="1.5" fill="#CBD8EC"/>
+  <use href="#chart" transform="translate(1322 280) scale(.85)"/>
+  <path d="M1417 289 H1481 M1417 300 H1474 M1417 311 H1478 M1417 322 H1459" stroke="#D8E1EF" stroke-width="3" stroke-linecap="round"/>
+  <rect x="1414" y="332" width="100" height="81" rx="7" fill="white" stroke="#ADC3F5" filter="url(#shadow)"/>
+  <path d="M1428 346 V357 M1432 342 V361 M1436 345 V358 M1440 349 V354" stroke="#547CF8" stroke-width="2" stroke-linecap="round"/>
+  <path d="M1451 348 H1499 M1451 356 H1488 M1428 374 H1499 M1428 383 H1494 M1428 392 H1480" stroke="#CCD8EE" stroke-width="3" stroke-linecap="round"/>
+  <text x="1410" y="465" font-size="16" text-anchor="middle" class="ink">Structure the academic story</text>
+  <text x="1410" y="491" font-size="12" text-anchor="middle" class="muted">Editable slides · Notes · PPTX</text>
+</svg>

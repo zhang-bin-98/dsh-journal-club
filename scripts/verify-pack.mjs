@@ -8,13 +8,15 @@ if (!npmCli) throw new Error('Run this script with npm run verify:pack')
 const destination = resolve('out/release')
 await mkdir(destination, { recursive: true })
 const [packed] = JSON.parse(execFileSync(process.execPath,
-  [npmCli, 'pack', '--json', '--pack-destination', destination], { encoding: 'utf8' }))
+  // verify:pack already built the package; prepare output would pollute JSON.
+  [npmCli, 'pack', '--ignore-scripts', '--json', '--pack-destination', destination], { encoding: 'utf8' }))
 const files = new Set(packed.files.map(file => file.path))
 const required = ['package.json', 'LICENSE', 'README.md', 'README.zh-CN.md', 'SECURITY.md',
   'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/project.js',
   'lib/typert.host.js', 'lib/typert.remote-client.js',
   'src/skills/journal-club/SKILL.md', 'src/skills/journal-club/references/narrative.md',
-  'src/skills/journal-club/references/formats.md']
+  'src/skills/journal-club/references/formats.md',
+  'docs/assets/journal-club-banner.en.png', 'docs/assets/journal-club-banner.zh-CN.png']
 for (const file of required) {
   if (!files.has(file)) throw new Error(`Package missing ${file}`)
 }
