@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { withFileLock } from '../src/fileLock.ts'
 import { registerCrop } from '../src/tools/crop.ts'
 import { registerRenderPages } from '../src/tools/renderPages.ts'
 import { FIXTURES, fixturePath } from './fixtures.ts'
@@ -209,7 +210,7 @@ describe('crop 工具', () => {
     expect((await readdir(join(project, 'figures'))).filter(name => name.endsWith('.tmp'))).toEqual([])
   })
 
-  it('落盘失败时撤回本次新登记的 asset，不留下指向缺失文件的引用', async () => {
+  it('落盘失败时不登记 asset，不留下指向缺失文件的引用', async () => {
     const { project, pdfRel } = await prepareProject()
     await writeFile(join(project, 'figures.json'), JSON.stringify({
       version: 1,
@@ -225,6 +226,42 @@ describe('crop 工具', () => {
     await expect(defs.get('crop')!.execute({ figures_json: 'paper-b/figures.json' }, runCtx())).rejects.toThrow()
     const saved = JSON.parse(await readFile(join(project, 'figures.json'), 'utf8'))
     expect(saved.figures[0].panels[0].asset).toBeUndefined()
+    expect((await readdir(join(project, 'figures'))).filter(name => name.endsWith('.tmp'))).toEqual([])
+  })
+
+  it('裁切期间 figures.json 被他人改写时报冲突，不用旧框像素覆盖已有资产', async () => {
+    const { project, pdfRel } = await prepareProject()
+    const figuresPath = join(project, 'figures.json')
+    const initial = {
+      version: 1,
+      revision: 4,
+      documents: [{ id: 'main', path: pdfRel, role: 'main', pages: 30 }],
+      figures: [{ id: 'fig1', status: 'pending', regions: [{ document: 'main', page: 2, bbox: [0, 0, 612, 792] }],
+        panels: [{ id: 'fig1_A', label: 'A', region_index: 0, bbox: [40, 40, 300, 300], caption_refs: [], flags: [], origin: 'auto', asset: 'figures/fig1_A.png' }] }],
+    }
+    await writeFile(figuresPath, JSON.stringify(initial), 'utf8')
+    await mkdir(join(project, 'figures'), { recursive: true })
+    const oldPixels = Buffer.from('old-pixels')
+    await writeFile(join(project, 'figures', 'fig1_A.png'), oldPixels)
+    // 他人先持有 figures.json 锁；crop 暂存像素后，他人推进 revision 再释放。
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const holder = withFileLock(figuresPath, () => gate)
+    const { ctx, defs } = captureTools()
+    registerCrop(ctx)
+    const crop = defs.get('crop')!.execute({ figures_json: 'paper-b/figures.json' }, runCtx())
+    crop.catch(() => {})
+    // crop 必须停在锁前等待；若不等锁直接换像素（旧实现），暂存文件不会留存，限时失败。
+    const deadline = Date.now() + 10_000
+    while (!(await readdir(join(project, 'figures'))).some(name => name.endsWith('.tmp'))) {
+      if (Date.now() > deadline) { release(); throw new Error('crop 未在 figures.json 锁前等待') }
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    await writeFile(figuresPath, JSON.stringify({ ...initial, revision: 5 }), 'utf8')
+    release()
+    await holder
+    await expect(crop).rejects.toThrow(/写入冲突.*revision=5/u)
+    expect(await readFile(join(project, 'figures', 'fig1_A.png'))).toEqual(oldPixels)
     expect((await readdir(join(project, 'figures'))).filter(name => name.endsWith('.tmp'))).toEqual([])
   })
 

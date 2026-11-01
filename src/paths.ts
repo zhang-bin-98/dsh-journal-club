@@ -1,4 +1,5 @@
-import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
+import { realpath } from 'node:fs/promises'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /** 从 dsh 工具执行上下文取得会话工作目录；单测/离线调用回退进程目录。 */
 export interface WorkspaceExecution {
@@ -22,7 +23,7 @@ export function resolveWorkspacePath(input: string, cwd = process.cwd()): string
 }
 
 /** 给清洗后的文件名追加稳定短标识，避免不同源文件名称碰撞。 */
-export function stableStem(input: string, fallback: string): string {
+function stableStem(input: string, fallback: string): string {
   const raw = basename(input).replace(/\.[^.]+$/u, '')
   const stem = raw.replace(/[^\w.-]+/gu, '_') || fallback
   if (raw === stem) return stem
@@ -35,7 +36,7 @@ export function stableStem(input: string, fallback: string): string {
 }
 
 /** 输出 PNG 的页码后缀，固定三位零填充（论文页数 < 1000）。 */
-export function pageSuffix(page: number): string {
+function pageSuffix(page: number): string {
   return String(page).padStart(3, '0')
 }
 
@@ -56,12 +57,28 @@ export function assertSafeAssetId(id: string): void {
   }
 }
 
+/** 目标是否位于目录内（按词法路径，不跟随链接）。 */
+export function isInsideDirectory(target: string, directory: string): boolean {
+  const rel = relative(resolve(directory), resolve(target))
+  return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
+}
+
 /** 确认目标位于目录内，避免 ID 或路径逃逸。 */
 export function assertInsideDirectory(target: string, directory: string): void {
-  const targetAbs = resolve(target)
-  const dirAbs = resolve(directory)
-  const rel = relative(dirAbs, targetAbs)
-  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-    throw new Error(`路径超出目标目录：${target}`)
-  }
+  if (!isInsideDirectory(target, directory)) throw new Error(`路径超出目标目录：${target}`)
+}
+
+/** 解析会话工作区内的真实文件：先查词法范围，再 realpath 查符号链接目标。 */
+export async function projectFile(cwd: string, path: string): Promise<string> {
+  const root = await realpath(cwd)
+  const target = resolve(root, path)
+  assertInsideDirectory(target, root)
+  const canonical = await realpath(target)
+  assertInsideDirectory(canonical, root)
+  return canonical
+}
+
+/** render_pages 页图位置：PDF 同目录 `pages/<文档名>-<NNN>.png`；工作台按同一约定找底图。 */
+export function pageImagePath(pdfPath: string, page: number): string {
+  return join(dirname(pdfPath), 'pages', `${stableStem(pdfPath, 'doc')}-${pageSuffix(page)}.png`)
 }

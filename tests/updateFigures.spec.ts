@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { applyJsonPatch, figuresLockPath, updateFiguresFile } from '../src/figures/figuresStore.ts'
+import { applyJsonPatch, updateFiguresFile } from '../src/figures/figuresStore.ts'
+import { lockPathFor } from '../src/fileLock.ts'
 import { registerUpdateFigures } from '../src/tools/updateFigures.ts'
 
 function fixtureFigures() {
@@ -184,19 +185,19 @@ describe('figuresStore RFC6902 patch', () => {
     await writeFile(join(work, 'paper', '.history'), 'not a directory', 'utf8')
     await expect(updateFiguresFile(figuresPath, [{ op: 'replace', path: '/status', value: 'confirmed' }], 0)).rejects.toThrow()
     expect(await readFile(figuresPath, 'utf8')).toBe(before)
-    await expect(readFile(figuresLockPath(figuresPath), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(lockPathFor(figuresPath), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('回收已退出进程或写到一半留下的残留锁', async () => {
     const dead = spawnSync(process.execPath, ['-e', '']).pid
-    await writeFile(figuresLockPath(figuresPath), `${JSON.stringify({ pid: dead, createdAt: '2026-01-01T00:00:00Z' })}\n`, 'utf8')
+    await writeFile(lockPathFor(figuresPath), `${JSON.stringify({ pid: dead, createdAt: '2026-01-01T00:00:00Z' })}\n`, 'utf8')
     expect(await updateFiguresFile(figuresPath, [{ op: 'replace', path: '/status', value: 'confirmed' }], 0)).toMatchObject({ ok: true, revision: 1 })
 
-    await writeFile(figuresLockPath(figuresPath), '', 'utf8')
+    await writeFile(lockPathFor(figuresPath), '', 'utf8')
     const old = new Date(Date.now() - 60_000)
-    await utimes(figuresLockPath(figuresPath), old, old)
+    await utimes(lockPathFor(figuresPath), old, old)
     expect(await updateFiguresFile(figuresPath, [{ op: 'replace', path: '/status', value: 'draft' }], 1)).toMatchObject({ ok: true, revision: 2 })
-    await expect(readFile(figuresLockPath(figuresPath), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(lockPathFor(figuresPath), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('滚动快照最多保留最近 10 份', async () => {

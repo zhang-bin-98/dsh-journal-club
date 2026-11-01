@@ -1,7 +1,8 @@
-import { chooseLayout, containRect, type Rect, type ImageSize } from './figureGeometry.ts'
+import { chooseLayout, containRect, DEFAULT_CANVAS, DEFAULT_GAP, type Rect, type ImageSize } from './figureGeometry.ts'
 
-export interface CompositionCell extends Rect { member: string; content?: Rect }
-export interface CompositionGeometry { width: number; height: number; gap: number; cells: CompositionCell[] }
+export interface CompositionCell extends Rect { member: string }
+/** width/height 只是编辑与初始排版的参考尺寸；导出尺寸由图片外缘决定。 */
+export interface CompositionGeometry { width: number; height: number; cells: CompositionCell[] }
 export interface CompositionLayout { kind: 'manual' | 'grid' | 'rows' | '1+2'; geometry: CompositionGeometry }
 export interface CompositionAsset extends ImageSize { id: string; asset: string; digest: string; label: string }
 export interface CompositionGroup { id: string; asset: string; members: string[]; inputs_digest: string; layout?: CompositionLayout; stale?: boolean }
@@ -15,24 +16,27 @@ export interface CompositionSave {
   inputs: { id: string; digest: string }[]
 }
 
-/** The same logical rectangles drive the editor and PNG export. No count or aspect-ratio cap. */
+/**
+ * The same logical rectangles drive the editor and PNG export. No count or aspect-ratio cap.
+ * 旧文件中的 gap 与 cell.content 是已删除的派生字段，读取时忽略、不再写出。
+ */
 export function validateGeometry(value: unknown, members?: readonly string[]): CompositionGeometry {
   if (!value || typeof value !== 'object') throw new Error('缺少拼图几何')
   const g = value as CompositionGeometry
-  if (![g.width, g.height].every(n => Number.isFinite(n) && n >= 1) || !Number.isFinite(g.gap) || g.gap < 0 || !Array.isArray(g.cells)) throw new Error('参考宽高必须至少为 1，间距必须非负')
+  if (![g.width, g.height].every(n => Number.isFinite(n) && n >= 1) || !Array.isArray(g.cells)) throw new Error('参考宽高必须至少为 1')
   const ids = new Set<string>()
   for (const c of g.cells) {
     if (!c || typeof c.member !== 'string' || ids.has(c.member) || ![c.x, c.y, c.width, c.height].every(Number.isFinite) || c.width <= 0 || c.height <= 0) throw new Error('图片坐标或尺寸无效，成员不可重复')
     ids.add(c.member)
   }
   if (members && (members.length !== ids.size || members.some(id => !ids.has(id)))) throw new Error('布局成员与输入图片不一致')
-  return { width: g.width, height: g.height, gap: g.gap, cells: g.cells.map(c => ({ member: c.member, x: c.x, y: c.y, width: c.width, height: c.height })) }
+  return { width: g.width, height: g.height, cells: g.cells.map(c => ({ member: c.member, x: c.x, y: c.y, width: c.width, height: c.height })) }
 }
 
 export function suggestGeometry(assets: readonly (ImageSize & { id: string })[], width: number, height: number): CompositionGeometry {
-  if (!assets.length) return { width, height, gap: 12, cells: [] }
-  const chosen = chooseLayout(assets.length, assets, undefined, 12, width, height)
-  return { width, height, gap: 12, cells: chosen.cells.map((cell, i) => ({ member: assets[i]!.id, ...containRect(cell, assets[i]!.width / assets[i]!.height) })) }
+  if (!assets.length) return { width, height, cells: [] }
+  const chosen = chooseLayout(assets.length, assets, undefined, DEFAULT_GAP, width, height)
+  return { width, height, cells: chosen.cells.map((cell, i) => ({ member: assets[i]!.id, ...containRect(cell, assets[i]!.width / assets[i]!.height) })) }
 }
 
 export function fitCanvas(g: CompositionGeometry): CompositionGeometry {
@@ -44,7 +48,7 @@ export function fitCanvas(g: CompositionGeometry): CompositionGeometry {
 
 /** Bounds of the displayed images, excluding contain-cell padding but never trimming source pixels. */
 export function compositionBounds(g: CompositionGeometry, assets: readonly (ImageSize & { id: string })[]): Rect {
-  if (!g.cells.length) return { x: 0, y: 0, width: 960, height: 540 }
+  if (!g.cells.length) return { x: 0, y: 0, ...DEFAULT_CANVAS }
   const cells = contentCells(g, assets)
   const x = Math.min(...cells.map(c => c.x)), y = Math.min(...cells.map(c => c.y))
   return { x, y, width: Math.max(1, Math.max(...cells.map(c => c.x + c.width)) - x), height: Math.max(1, Math.max(...cells.map(c => c.y + c.height)) - y) }

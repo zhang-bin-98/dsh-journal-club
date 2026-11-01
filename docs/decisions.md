@@ -241,7 +241,7 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 ## D30 实现收敛：crop 单次回写、残留锁回收、校验同源（2026-10-30）
 
 - **问题**：架构复查发现三处缺陷。crop 遇任一异常即整批不回写、删除暂存 PNG，却仍在 `cropped` 中报告资产路径，agent 会把旧图当成新裁结果；crop 每个 panel 单独写一次 revision，全量裁切产生 N 份快照，按 10 份滚动会冲掉切分阶段的 `.history`；`.lock` 写入了 pid 却无人检查，进程崩溃后的残留锁让之后的写入全部超时。
-- **决策**：crop 将本次新资产路径合成一个 patch，经同一写入入口回写（至多 revision+1）；已登记 asset 的 panel 只在 revision 未变时替换像素，不增加版本。异常项列入 anomalies，不阻断其余 panel，`cropped` 只列实际落盘的资产；写入冲突时丢弃暂存图并报错。锁逻辑合并为 `src/fileLock.ts`，figures.json 与 groups.json 共用；锁内容记录的 pid 已退出，或锁内容为空/不可解析且超过 5 秒（含旧版 compose 留下的空锁），即回收；删除前复读锁内容以缩小多进程同时回收的竞态，仍属尽力而为。rename 落盘失败时，本次新登记但未落盘的 asset 尽力撤回。
+- **决策**：crop 将本次新资产路径合成一个 patch，经同一写入入口回写（至多 revision+1）；已登记 asset 的 panel 只在 revision 未变时替换像素，不增加版本。异常项列入 anomalies，不阻断其余 panel，`cropped` 只列实际落盘的资产；写入冲突时丢弃暂存图并报错。锁逻辑合并为 `src/fileLock.ts`，figures.json 与 groups.json 共用；锁内容记录的 pid 已退出，或锁内容为空/不可解析且超过 5 秒（含旧版 compose 留下的空锁），即回收；删除前复读锁内容以缩小多进程同时回收的竞态，仍属尽力而为。像素替换与 asset 登记的顺序及锁范围后由 D37 收紧。
 - **同源**：validate 复用 `figuresJsonIssues`（与 update_figures 写入前校验同一规则，原先两套规则不一致，validate 漏查负坐标和 asset 路径）；groups.json 解析与成员指纹集中在 `src/groups.ts`，compose_panels 与 validate 共用同一算法。MinerU 换算 `mineruBBoxToPt`/`parseContentList` 经 `./project` 导出，skill 改为调用 helper，不再手算。client figures 类型改由 zod schema 推导。
 - **顺带修正**：validate 工具摘要原先把 errors 与 warnings 混排、无法区分，改为分组标题；不再随包发布无法独立运行的 `src/tools/composePanels.ts`、`src/layout/**` 源码（其依赖未随包，运行时只用 lib）。
 - **保留**：自研 RFC 6902 patch 与 jc.md frontmatter 解析不换成第三方库——两者已有安全检查与回归，换库仍需自写 revision 保护与严格度约束，收益有限且新增依赖。三处 frontmatter 解析严格度不同（jc.md 严格、deck/状态卡宽松），合并会改变容错行为，暂不合并。jc.md 的 `figures_revision` 处理见 D31。
@@ -290,6 +290,13 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **不做**：不引入草稿持久化、写入事务或状态库；拼图编辑器按下未移动时的外部重载、跨图报错清除、每次刷新重读全部页图等风险留待后续。
 - **验证**：141/141 回归、typecheck（含未使用变量检查）与构建通过。新增用例在修复前代码上失败：标签写入进行中拖框（未修复时拖框被丢弃）、两次本端写入间夹入外部修改仍报冲突、读取瞬时失败重试、重试仍失败保留上一份、文件不存在不重试、补图页刷新不清空页图。真实 store 异步读写下新增 Panel 后改标签的用例在修复前同样通过，只作为端到端行为保护，不证明修复本身。未在真实宿主复验。
 
+## D37 架构收敛：crop 锁内落盘、指纹同源、拼图字段精简（2026-11-01）
+
+- **问题**（冗余与架构复查）：① crop 在 figures.json 锁外换像素，已登记 asset 只换像素不写文件，旧框裁出的像素可能覆盖他人刚改的框；登记失败后的撤回逻辑本身是额外的补偿路径。② 成员指纹有两份实现（host 自算一份、groups.ts 一份），sha256 与取消检查各文件各写一遍；compositionState 读三次 groups.json 防并发。③ 拼图读写逻辑写在 host Remote 内；路径越界判断有三份。④ groups.json 的 `gap` 只给建议排版用，写入后无人读取；`cell.content` 是每次可重算的派生值；工具默认 1 倍、工作台 2 倍，同一图组经不同入口重导分辨率会变。⑤ 无调用方的选项（快照条数、锁超时/重试）、恒真检查、重复报错、散落的 960×540。
+- **决策**（用户接受，确认删除 gap）：crop 新增 `withFiguresLock` 作用域：锁内确认 revision 未变 → 换像素 → 一次登记新 asset；先落盘再登记，失败不留悬空引用，删除锁外撤回。指纹只在 `groups.ts`（`digestMembers` 接收内容摘要，`sameDigest` 比较），`sha256Hex`/`throwIfAborted` 在 `files.ts`；groups.json 一次读取同时取内容与摘要。拼图载入/保存移入 `src/compositionService.ts`，host 只做会话解析。`projectFile`、`isInsideDirectory`、`pageImagePath` 收进 `paths.ts`，render_pages 与 host 共用页图路径。groups.json 不再写 `gap` 与 `content`；compose_panels 默认 `scale` 改为 2。参考画布与建议间距改为 `DEFAULT_CANVAS`/`DEFAULT_GAP` 常量。validate 的 panel 越界只由 schema 报 FIGURES_INVALID，不再重复报 ASSET_PATH_ESCAPE（图组越界仍报）。
+- **兼容**：旧 groups.json 与旧入参中的 `gap`、`cell.content` 读取时忽略，下次保存自然移除；真实牙龈项目 38 个带 gap 的图组照常载入（0 过期、0 丢弃），validate 无错误。已用 1 倍导出的旧 PNG 不自动重导，下次保存或重建时变为 2 倍。
+- **验证**：142/142 回归、typecheck（含未使用变量检查）与构建通过。新增 crop 锁内冲突用例：他人持锁期间推进 revision，crop 报冲突且不覆盖已有像素——在本次修改前的代码上失败（锁外已换像素）。旧 gap/content 入参被忽略且不写回、默认 2 倍尺寸有回归。未在真实宿主复验。
+
 ## 修订记录
 
 - 2026-10-26：初版（D1–D13）。
@@ -317,3 +324,4 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 - 2026-10-31：D35（任意比例/图数的自由拼图页面，复用 compose 核心并保护手调草稿）。
 - 2026-10-31：D36（工作台写入排队与跨本端版本、figures.json 读取失败保留、补图页图不随刷新清空、确认图源时先全量重裁；同步修订图源核对 §4/§6、架构 §4.1 与当前状态、SKILL）。
+- 2026-11-01：D37（crop 锁内落盘、指纹与路径工具同源、拼图服务移出 host、删除 gap/content、compose 默认 2 倍；同步修订 D30、架构 §2/§3/§4.2/§5、自由拼图、formats.md）。

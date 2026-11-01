@@ -1,5 +1,6 @@
 import { createElement as h, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
 import type { BBox, FigureRecord, JsonPatch, ProjectStore } from '../types.ts'
+import { messageOf } from '../store.ts'
 import { styles } from '../styles.ts'
 import { bboxStyle, drawWithinRegion, editWithinRegion, expandRegionPatch, type PageSize, type ResizeHandle } from './geometry.ts'
 import { AddFigure } from './AddFigure.ts'
@@ -383,7 +384,6 @@ function RegionEditor(props: RegionEditorProps): ReactElement {
       ...(selected?.caption_refs ?? []).map(index => h('p', {key: index, className: styles.captionLineSelected}, props.figure.caption?.sentences[index])),
       props.figure.caption ? h('details', {className: styles.caption}, h('summary', null, '完整图注'), props.figure.caption.sentences.map((sentence, index) => h('span', {key: index, className: `${styles.captionLine} ${selected?.caption_refs.includes(index) ? styles.captionLineSelected : ''}`}, sentence))) : null)))
 }
-function messageOf(error: unknown): string { return error instanceof Error ? error.message : String(error) }
 
 /** 只替换值或追加到数组末尾的 patch 不移动任何下标，基于旧版本的下标路径在它之后仍指向同一对象。 */
 function preservesIndices(patch: readonly JsonPatch[]): boolean {

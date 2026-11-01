@@ -9,8 +9,6 @@ import { resolve } from 'node:path'
 
 export interface FileLockOptions {
   readonly signal?: AbortSignal
-  readonly timeoutMs?: number
-  readonly retryMs?: number
 }
 
 export class FileLockError extends Error {
@@ -22,6 +20,8 @@ export class FileLockError extends Error {
 
 /** 锁内容为空或不可解析时，超过该时长才视为崩溃残留（正常写入锁内容是瞬时的）。 */
 const UNREADABLE_LOCK_GRACE_MS = 5_000
+const LOCK_TIMEOUT_MS = 10_000
+const LOCK_RETRY_MS = 20
 
 const queues = new Map<string, Promise<unknown>>()
 
@@ -101,8 +101,8 @@ async function acquire(lockPath: string, options: FileLockOptions): Promise<void
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
     if (await reclaimIfStale(lockPath)) continue
-    if (Date.now() - started >= (options.timeoutMs ?? 10_000)) throw new FileLockError(`等待锁超时：${lockPath}`)
-    await wait(options.retryMs ?? 20, options.signal)
+    if (Date.now() - started >= LOCK_TIMEOUT_MS) throw new FileLockError(`等待锁超时：${lockPath}`)
+    await wait(LOCK_RETRY_MS, options.signal)
   }
 }
 

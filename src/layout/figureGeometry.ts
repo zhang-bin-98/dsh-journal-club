@@ -67,7 +67,12 @@ function splitOnePlusTwo(width: number, height: number, gap: number): Rect[] {
   ]
 }
 
-export function partitionRects(kind: LayoutKind, count: number, gap = 12, width = 960, height = 540): Rect[] {
+/** 空白编辑区与自动排版的参考画布；拼图导出尺寸由图片外缘决定，与此无关。 */
+export const DEFAULT_CANVAS = { width: 960, height: 540 } as const
+/** 自动排版的分区间距（参考画布单位）；只用于建议排版，不写入 groups.json。 */
+export const DEFAULT_GAP = 12
+
+function partitionRects(kind: LayoutKind, count: number, gap: number, width: number, height: number): Rect[] {
   if (!Number.isInteger(count) || count < 1) throw new Error('图组至少需要一个成员')
   if (!Number.isFinite(gap) || gap < 0) throw new Error('布局间距必须非负')
   if (![width, height].every(n => Number.isFinite(n) && n >= 1)) throw new Error('画布尺寸必须至少为 1')
@@ -96,9 +101,9 @@ export function chooseLayout(
   count: number,
   images: readonly ImageSize[],
   hint?: LayoutKind,
-  gap = 12,
-  width = 960,
-  height = 540,
+  gap = DEFAULT_GAP,
+  width: number = DEFAULT_CANVAS.width,
+  height: number = DEFAULT_CANVAS.height,
 ): { kind: LayoutKind; cells: Rect[]; score: number } {
   const candidates: LayoutKind[] = hint
     ? [hint]
@@ -113,8 +118,4 @@ export function chooseLayout(
   const selected = ranked[0]
   if (!selected) throw new Error('无法生成图组布局')
   return selected
-}
-
-export function fitImageToCell(cell: Rect, image: ImageSize): Rect {
-  return containRect(cell, image.width / image.height)
 }

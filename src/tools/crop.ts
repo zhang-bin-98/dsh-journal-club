@@ -8,7 +8,7 @@ import {
   type Figure,
   type Panel,
 } from '../figures/figuresJson.ts'
-import { updateFiguresFile } from '../figures/figuresStore.ts'
+import { withFiguresLock } from '../figures/figuresStore.ts'
 import { atomicWriteFile } from '../files.ts'
 import { PdfFile } from '../pdf/pdf.ts'
 import { hasIntersection } from '../pdf/coords.ts'
@@ -203,6 +203,7 @@ export async function cropFigures(
   const cropped: CroppedEntry[] = []
   const staged: StagedAsset[] = []
   let revision = data.revision
+  const placed: StagedAsset[] = []
   try {
     for (const { figure, panel } of selected) {
       if ((idCounts.get(panel.id) ?? 0) > 1) continue
@@ -276,31 +277,23 @@ export async function cropFigures(
       }
     }
 
-    // 成功裁出的 panel 一次回写 asset（单次 revision）；已有 asset 的只需在
-    // revision 未变时替换像素，不制造无意义的版本与快照。
-    const assetPath = (item: StagedAsset) => `/figures/${item.figureIndex}/panels/${item.panelIndex}/asset`
-    const added = new Set(staged.filter(item => data.figures[item.figureIndex]?.panels[item.panelIndex]?.asset === undefined))
-    const patch = [...added].map(item => ({ op: 'add' as const, path: assetPath(item), value: `figures/${item.id}.png` }))
-    if (patch.length > 0) {
-      const updated = await updateFiguresFile(absFigures, patch, revision, { signal })
-      if (!updated.ok) throw new Error(`crop 写入冲突：figures.json 已更新到 revision=${updated.revision}，请按最新框重新裁切`)
-      revision = updated.revision
-    } else if (staged.length > 0) {
-      const current = await loadFiguresJson(absFigures)
-      if (current.revision !== revision) {
-        throw new Error(`crop 写入冲突：figures.json 已更新到 revision=${current.revision}，请按最新框重新裁切`)
-      }
-    }
-    try {
-      while (staged.length > 0) {
-        await rename(staged[0]!.tempPath, staged[0]!.outPath)
-        staged.shift()
-      }
-    } catch (error) {
-      // 本次新登记但未落盘的 asset 尽力撤回，避免 figures.json 指向不存在的文件。
-      const rollback = staged.filter(item => added.has(item)).map(item => ({ op: 'remove' as const, path: assetPath(item) }))
-      if (rollback.length > 0) await updateFiguresFile(absFigures, rollback, revision).catch(() => undefined)
-      throw error
+    // 持 figures.json 写锁：确认版本未变 → 换像素 → 一次登记新 asset（至多 revision+1）。
+    // 三步不被其他写入者插入，旧框裁出的像素不会覆盖新框；已有 asset 只换像素、不推进版本。
+    // 先换像素再登记：换失败时尚未写 figures.json，不会留下指向缺失文件的 asset。
+    if (staged.length > 0) {
+      revision = await withFiguresLock(absFigures, async scope => {
+        if (scope.current.revision !== data.revision) {
+          throw new Error(`crop 写入冲突：figures.json 已更新到 revision=${scope.current.revision}，请按最新框重新裁切`)
+        }
+        while (staged.length > 0) {
+          await rename(staged[0]!.tempPath, staged[0]!.outPath)
+          placed.push(staged.shift()!)
+        }
+        const patch = placed
+          .filter(item => data.figures[item.figureIndex]?.panels[item.panelIndex]?.asset === undefined)
+          .map(item => ({ op: 'add' as const, path: `/figures/${item.figureIndex}/panels/${item.panelIndex}/asset`, value: `figures/${item.id}.png` }))
+        return patch.length > 0 ? (await scope.write(patch)).revision : scope.current.revision
+      }, signal)
     }
   } finally {
     await Promise.all(staged.map(item => rm(item.tempPath, { force: true }).catch(() => {})))

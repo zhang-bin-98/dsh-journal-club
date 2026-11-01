@@ -2,6 +2,7 @@ import { MaterialBrowser } from './MaterialBrowser.ts'
 import { GroupNavigator } from './GroupNavigator.ts'
 import { createElement as h, useEffect, useId, useRef, useState, type ReactElement, type PointerEvent as Pointer, type KeyboardEvent } from 'react'
 import { compositionBounds, editingBounds, fitComposition, imageRect, resizeImage, suggestGeometry, validateGeometry, type CompositionAsset, type CompositionGeometry, type CompositionSave, type CompositionState } from '../../layout/composition.ts'
+import { DEFAULT_CANVAS } from '../../layout/figureGeometry.ts'
 import { styles } from '../styles.ts'
 
 interface Props {
@@ -14,7 +15,7 @@ interface Props {
 }
 interface Draft { id: string; history: CompositionGeometry[]; index: number; saved: string; base: string; inputs: CompositionAsset[]; local: boolean }
 const orderedIds = (data: CompositionState): string[] => data.order ?? data.groups.map(g => g.id)
-const empty = (): CompositionGeometry => ({ width: 960, height: 540, gap: 12, cells: [] })
+const empty = (): CompositionGeometry => ({ ...DEFAULT_CANVAS, cells: [] })
 const value = (draft: Draft): CompositionGeometry => draft.history[draft.index]!
 const serialized = (g: CompositionGeometry): string => JSON.stringify(g)
 function newId(ids: readonly string[]): string {
@@ -61,7 +62,7 @@ export function CompositionEditor(props: Props): ReactElement {
         const asset = data.assets.find(a => a.id === member)
         if (!asset) throw new Error(`图源不可读：${member}`)
         return asset
-      }), 960, 540)
+      }), DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
     }
     return { id, history: [g], index: 0, saved: serialized(g), base: data.digest, inputs: data.assets, local: !group }
   }

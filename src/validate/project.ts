@@ -1,7 +1,9 @@
 import { access, readFile } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { relative, resolve } from 'node:path'
 import { figuresJsonIssues, loadFiguresJson, type FiguresJson, type Panel } from '../figures/figuresJson.ts'
-import { digestMembers, readGroups, type GroupsFile } from '../groups.ts'
+import { sha256Hex } from '../files.ts'
+import { digestMembers, readGroups, sameDigest, type GroupsFile } from '../groups.ts'
+import { isInsideDirectory } from '../paths.ts'
 import { normalizeAssetReference, parseDeck, projectPath, readTextIfExists, isSourceLineValid, panelMentionTokens } from './markdown.ts'
 
 export interface ValidationIssue {
@@ -22,13 +24,6 @@ function issue(code: string, message: string, extra: Omit<ValidationIssue, 'code
   return { code, message, ...extra }
 }
 
-function isInsideProject(projectDir: string, candidatePath: string): boolean {
-  const base = resolve(projectDir)
-  const target = resolve(candidatePath)
-  const rel = relative(base, target)
-  return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
-}
-
 async function exists(path: string): Promise<boolean> {
   try {
     await access(path)
@@ -38,15 +33,13 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-/** 与 compose_panels 登记时相同的成员指纹；成员缺失或路径越界时必然不匹配。 */
+/** 与 compose_panels 登记时相同的成员指纹；成员缺失时以 missing 占位，必然不匹配。figures.json 的 asset 已由 schema 限定在 figures/ 内。 */
 async function digestAssets(projectDir: string, panelIds: string[], panels: Map<string, Panel>): Promise<string> {
   const members = await Promise.all(panelIds.map(async id => {
     const panel = panels.get(id)
     if (!panel?.asset) return { id }
-    const path = projectPath(projectDir, panel.asset)
-    if (!isInsideProject(projectDir, path)) return { id, missing: 'unsafe-path' }
-    const bytes = await readFile(path).catch(() => undefined)
-    return bytes === undefined ? { id } : { id, bytes }
+    const bytes = await readFile(projectPath(projectDir, panel.asset)).catch(() => undefined)
+    return { id, digest: bytes === undefined ? undefined : sha256Hex(bytes) }
   }))
   return digestMembers(members)
 }
@@ -77,9 +70,8 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
         if (panel.asset) {
           const normalized = normalizeAssetReference(panel.asset)
           panelAssets.set(panel.id, normalized)
-          const assetPath = projectPath(absProject, normalized)
-          if (!isInsideProject(absProject, assetPath)) errors.push(issue('ASSET_PATH_ESCAPE', `图片路径超出项目目录：${panel.asset}`, { path: 'figures.json', panel: panel.id }))
-          else if (!await exists(assetPath)) errors.push(issue('PANEL_ASSET_MISSING', `panel asset 不存在：${panel.asset}`, { path: 'figures.json', panel: panel.id }))
+          // 越界路径已由 schema 报为 FIGURES_INVALID，这里只查存在性。
+          if (!await exists(projectPath(absProject, normalized))) errors.push(issue('PANEL_ASSET_MISSING', `panel asset 不存在：${panel.asset}`, { path: 'figures.json', panel: panel.id }))
         }
         for (const flag of panel.flags) if (flag === 'edge-cut' || flag === 'missing-caption' || flag === 'no-label') warnings.push(issue('PANEL_FLAG', `panel 带标记：${flag}`, { path: 'figures.json', panel: panel.id }))
       }
@@ -117,7 +109,7 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
           if (!group) errors.push(issue('GROUP_MISSING', `引用的图组不存在：${groupId}`, { path: 'deck.md', page: page.index, group: groupId }))
           else {
             const groupAssetPath = projectPath(absProject, group.asset)
-            if (!isInsideProject(absProject, groupAssetPath)) errors.push(issue('ASSET_PATH_ESCAPE', `图组路径超出项目目录：${group.asset}`, { path: 'groups.json', group: groupId }))
+            if (!isInsideDirectory(groupAssetPath, absProject)) errors.push(issue('ASSET_PATH_ESCAPE', `图组路径超出项目目录：${group.asset}`, { path: 'groups.json', group: groupId }))
             else if (!await exists(groupAssetPath)) errors.push(issue('GROUP_ASSET_MISSING', `图组资产不存在：${group.asset}`, { path: 'groups.json', page: page.index, group: groupId }))
             for (const member of group.members) {
               referencedPanels.add(member)
@@ -130,7 +122,7 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
                 groupDigestCache.set(groupId, digestPromise)
               }
               const digest = await digestPromise
-              if (digest.replace(/^sha256:/u, '') !== group.inputs_digest.replace(/^sha256:/u, '')) {
+              if (!sameDigest(group.inputs_digest, digest)) {
                 warnings.push(issue('GROUP_DIGEST_STALE', `图组成员资产已变化，需要重建：${groupId}`, { path: 'groups.json', page: page.index, group: groupId }))
               }
             }

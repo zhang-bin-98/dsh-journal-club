@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import { atomicWriteFile } from '../files.ts'
-import { lockPathFor, withFileLock } from '../fileLock.ts'
+import { atomicWriteFile, throwIfAborted } from '../files.ts'
+import { withFileLock } from '../fileLock.ts'
 import { parseFiguresJson, validateFiguresJson, type FiguresJson } from './schema.ts'
 
 /** RFC 6902 JSON Patch operation. `value` is required by add/replace/test/copy. */
@@ -13,10 +13,8 @@ export type JsonPatchOperation =
   | { op: 'copy'; from: string; path: string }
   | { op: 'test'; path: string; value: unknown }
 
-export interface UpdateFiguresOptions {
-  readonly signal?: AbortSignal
-  readonly historyLimit?: number
-}
+/** .history 滚动快照保留份数。 */
+const HISTORY_LIMIT = 10
 
 export interface UpdateFiguresSuccess {
   readonly ok: true
@@ -43,10 +41,6 @@ export class FiguresPatchError extends Error {
 }
 
 let snapshotSequence = 0
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('操作已取消')
-}
 
 function cloneValue<T>(value: T): T {
   try {
@@ -271,15 +265,11 @@ function validatePatchShape(patch: readonly JsonPatchOperation[]): void {
       if (!Object.prototype.hasOwnProperty.call(operation, 'value')) throw new FiguresPatchError(`patch[${index}] 缺少 value`)
     } else if (operation.op === 'move' || operation.op === 'copy') {
       if (typeof operation.from !== 'string') throw new FiguresPatchError(`patch[${index}] 缺少 from`)
+      decodePointer(operation.from)
     } else if (operation.op !== 'remove') {
       throw new FiguresPatchError(`patch[${index}] 操作不支持：${operation.op}`)
     }
     decodePointer(operation.path)
-    if (operation.op === 'move' || operation.op === 'copy') {
-      const from = (operation as { from?: unknown }).from
-      if (typeof from !== 'string') throw new FiguresPatchError(`patch[${index}] 缺少 from`)
-      decodePointer(from)
-    }
   }
 }
 
@@ -308,6 +298,59 @@ async function pruneSnapshots(absPath: string, limit: number): Promise<void> {
   await Promise.all(snapshots.slice(limit).map(entry => rm(join(historyDir, entry.name), { force: true })))
 }
 
+/** 锁内看到的 figures.json；write 应用 patch 并落盘（快照 + 原子替换），每次持锁最多调用一次。 */
+export interface FiguresLockScope {
+  /** 文件不存在时为空初值（revision 0，仅存在于锁内）。 */
+  readonly current: FiguresJson
+  readonly missing: boolean
+  write(patch: readonly JsonPatchOperation[]): Promise<UpdateFiguresSuccess>
+}
+
+/**
+ * 持 figures.json 写锁执行 task：update_figures 用它做 CAS 写入；crop 用它在确认版本后
+ * 替换资产像素并登记 asset，使「核对版本—换像素—写回」不被其他写入者插入。
+ */
+export async function withFiguresLock<T>(absPath: string, task: (scope: FiguresLockScope) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  const canonicalPath = resolve(absPath)
+  await mkdir(dirname(canonicalPath), { recursive: true })
+  return withFileLock(canonicalPath, async () => {
+    throwIfAborted(signal)
+    let raw: string | undefined
+    try {
+      raw = await readFile(canonicalPath, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    // The empty value exists only inside the lock; the completed patch must
+    // satisfy the full schema before anything is persisted.
+    const current: FiguresJson = raw === undefined
+      ? { version: 1, status: 'draft', revision: 0, documents: [], figures: [] }
+      : parseFiguresJson(raw, canonicalPath)
+    let written = false
+    const write = async (patch: readonly JsonPatchOperation[]): Promise<UpdateFiguresSuccess> => {
+      if (written) throw new FiguresPatchError('同一次持锁只能写入一次')
+      written = true
+      const parsed = parseFiguresJson(JSON.stringify(applyJsonPatch(current, patch)), canonicalPath)
+      if (parsed.revision !== current.revision) {
+        throw new FiguresPatchError('revision 由服务统一递增，patch 不得直接修改 revision')
+      }
+      const next = { ...parsed, revision: current.revision + 1 }
+      validateFiguresJson(next)
+      throwIfAborted(signal)
+      const historyPath = raw === undefined ? undefined : await writeSnapshot(canonicalPath, raw, current.revision)
+      try {
+        await atomicWriteFile(canonicalPath, `${JSON.stringify(next, null, 2)}\n`)
+      } catch (error) {
+        if (historyPath !== undefined) await rm(historyPath, { force: true }).catch(() => {})
+        throw error
+      }
+      await pruneSnapshots(canonicalPath, HISTORY_LIMIT).catch(() => {})
+      return { ok: true, conflict: false, revision: next.revision, figures: next, historyPath }
+    }
+    return task({ current, missing: raw === undefined, write })
+  }, { signal })
+}
+
 /**
  * figures.json 唯一写入入口（update_figures 工具、host RPC、crop 共用）：
  * 锁内重读并比较 base_rev，应用 patch 与完整校验后，写快照并原子替换。
@@ -316,53 +359,13 @@ export async function updateFiguresFile(
   absPath: string,
   patch: readonly JsonPatchOperation[],
   baseRev: number,
-  options: UpdateFiguresOptions = {},
+  options: { readonly signal?: AbortSignal } = {},
 ): Promise<UpdateFiguresResult> {
   if (!Number.isSafeInteger(baseRev) || baseRev < 0) throw new FiguresPatchError('base_rev 必须是非负整数')
-  const historyLimit = options.historyLimit ?? 10
-  if (!Number.isSafeInteger(historyLimit) || historyLimit < 1) throw new FiguresPatchError('historyLimit 必须是大于 0 的整数')
   validatePatchShape(patch)
-  const canonicalPath = resolve(absPath)
-  await mkdir(dirname(canonicalPath), { recursive: true })
-  return withFileLock(canonicalPath, async () => {
-    throwIfAborted(options.signal)
-    let raw: string | undefined
-    try {
-      raw = await readFile(canonicalPath, 'utf8')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      if (baseRev !== 0) throw new FiguresPatchError('figures.json 不存在，首次创建必须使用 base_rev=0')
-    }
-    // The empty value exists only inside the lock; the completed patch must
-    // satisfy the full schema before anything is persisted.
-    const current: FiguresJson = raw === undefined
-      ? { version: 1, status: 'draft', revision: 0, documents: [], figures: [] }
-      : parseFiguresJson(raw, canonicalPath)
-    if (current.revision !== baseRev) {
-      return { ok: false, conflict: true, revision: current.revision, current }
-    }
-
-    const patchedRaw = applyJsonPatch(current, patch)
-    const parsed = parseFiguresJson(JSON.stringify(patchedRaw), canonicalPath)
-    if (parsed.revision !== current.revision) {
-      throw new FiguresPatchError('revision 由服务统一递增，patch 不得直接修改 revision')
-    }
-    const next = { ...parsed, revision: current.revision + 1 }
-    validateFiguresJson(next)
-    throwIfAborted(options.signal)
-
-    const historyPath = raw === undefined ? undefined : await writeSnapshot(canonicalPath, raw, current.revision)
-    try {
-      await atomicWriteFile(canonicalPath, `${JSON.stringify(next, null, 2)}\n`)
-    } catch (error) {
-      if (historyPath !== undefined) await rm(historyPath, { force: true }).catch(() => {})
-      throw error
-    }
-    await pruneSnapshots(canonicalPath, historyLimit).catch(() => {})
-    return { ok: true, conflict: false, revision: next.revision, figures: next, historyPath }
-  }, { signal: options.signal })
-}
-
-export function figuresLockPath(absPath: string): string {
-  return lockPathFor(absPath)
+  return withFiguresLock(absPath, async scope => {
+    if (scope.missing && baseRev !== 0) throw new FiguresPatchError('figures.json 不存在，首次创建必须使用 base_rev=0')
+    if (scope.current.revision !== baseRev) return { ok: false, conflict: true, revision: scope.current.revision, current: scope.current }
+    return scope.write(patch)
+  }, options.signal)
 }

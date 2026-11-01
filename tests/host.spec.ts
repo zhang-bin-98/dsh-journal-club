@@ -142,7 +142,7 @@ it('自由拼图 Remote 载入真实图源、保存与恢复几何，拒绝过�
   await writeFile(join(root,'figures.json'),JSON.stringify({...figures(),figures:[{id:'f',regions:[{document:'main',page:1,bbox:[0,0,100,100]}],panels:[{id:'a',label:'A',region_index:0,bbox:[0,0,100,100],asset:'figures/a.png',caption_refs:[],flags:[],origin:'auto'}]}]}))
   const state=await service.compositionState('active','paper',signal())
   expect(state.assets[0]).toMatchObject({id:'a',width:120,height:80})
-  const request={project:'paper',id:'free',base_digest:state.digest,inputs:state.assets.map(a=>({id:a.id,digest:a.digest})),geometry:{width:143,height:267,gap:0,cells:[{member:'a',x:3,y:20,width:120,height:80}]}}
+  const request={project:'paper',id:'free',base_digest:state.digest,inputs:state.assets.map(a=>({id:a.id,digest:a.digest})),geometry:{width:143,height:267,cells:[{member:'a',x:3,y:20,width:120,height:80}]}}
   const saved=await service.saveComposition('active',{...request,create:true},signal())
   const restored=await service.compositionState('active','paper',signal())
   expect(saved.digest).toBe(restored.digest)

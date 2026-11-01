@@ -1,13 +1,12 @@
-import { createHash } from 'node:crypto'
 import { readFile, rm, realpath, mkdir } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import sharp from 'sharp'
 import { fitComposition, imageRect, validateGeometry, type CompositionGeometry, type CompositionLayout } from '../layout/composition.ts'
-import { atomicWriteFile } from '../files.ts'
+import { atomicWriteFile, sha256Hex, throwIfAborted } from '../files.ts'
 import { withFileLock } from '../fileLock.ts'
-import { digestMembers, readGroups, type GroupEntry, type GroupsFile } from '../groups.ts'
+import { digestMembers, groupsFileDigest, readGroupsWithDigest, type GroupEntry, type GroupsFile } from '../groups.ts'
 import {
   assertInsideDirectory,
   assertSafeAssetId,
@@ -17,13 +16,12 @@ import {
 } from '../paths.ts'
 import {
   chooseLayout,
-  fitImageToCell,
+  DEFAULT_CANVAS,
   type LayoutKind,
 } from '../layout/figureGeometry.ts'
 
-const CANVAS_WIDTH = 960
-const CANVAS_HEIGHT = 540
-const GAP_PT = 12
+/** 拼图导出倍率默认值：工具与工作台保存一致，避免同一张图被不同入口重导后分辨率改变。 */
+const DEFAULT_SCALE = 2
 
 type InputImage = {
   id: string
@@ -44,14 +42,6 @@ export interface ComposeRequest {
   inputs?: { id: string; digest: string }[]
 }
 export interface ComposeResult { output: string; group: string; members: string[]; inputs_digest: string; groups_digest: string; layout: CompositionLayout }
-export const bytesDigest = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex')
-export async function groupsDigest(path: string): Promise<string> {
-  return bytesDigest(await readFile(path).catch((e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return ''; throw e }))
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('操作已取消')
-}
 
 function projectDirForOutput(outputPath: string): string {
   const parent = dirname(outputPath)
@@ -59,14 +49,6 @@ function projectDirForOutput(outputPath: string): string {
     throw new Error('output 必须位于项目目录的 groups/ 子目录中')
   }
   return dirname(parent)
-}
-
-function assetReference(projectDir: string, outputPath: string): string {
-  const value = relative(projectDir, outputPath).replaceAll('\\', '/')
-  if (value === '' || value.startsWith('../') || value === '..' || /^[A-Za-z]:\//u.test(value)) {
-    throw new Error(`output 必须位于项目目录内：${outputPath}`)
-  }
-  return value
 }
 
 function panelIdFromAsset(path: string): string {
@@ -139,14 +121,15 @@ export function registerComposePanels(ctx: Context): void {
         geometry: {
           type: 'object', additionalProperties: false, description: '自由布局；width/height 为正参考尺寸，cells 为图片包围框，图片等比适配。输出按实际图片外缘确定尺寸，保留内部间隔和原图内容；不传时自动排版。',
           properties: {
-            width: { type: 'number', required: true }, height: { type: 'number', required: true }, gap: { type: 'number', required: true },
+            width: { type: 'number', required: true }, height: { type: 'number', required: true },
+            gap: { type: 'number', description: '已废弃，忽略；仅为接受旧 groups.json 的几何。' },
             cells: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
               member: { type: 'string', required: true }, x: { type: 'number', required: true }, y: { type: 'number', required: true }, width: { type: 'number', required: true }, height: { type: 'number', required: true },
-              content: { type: 'object', additionalProperties: false, description: '兼容已保存布局的派生值；导出时依据当前图片重新计算。', properties: { x: { type: 'number', required: true }, y: { type: 'number', required: true }, width: { type: 'number', required: true }, height: { type: 'number', required: true } } },
+              content: { type: 'object', additionalProperties: false, description: '已废弃，忽略；仅为接受旧 groups.json 的几何，导出依据当前图片重新计算。', properties: { x: { type: 'number', required: true }, y: { type: 'number', required: true }, width: { type: 'number', required: true }, height: { type: 'number', required: true } } },
             } } },
           },
         },
-        scale: { type: 'number', description: '导出倍率，默认1；改变采样尺寸，不改变布局。' },
+        scale: { type: 'number', description: '导出倍率，默认 2（与工作台保存一致）；改变采样尺寸，不改变布局。' },
         create: { type: 'boolean', description: '仅明确新建/另存拼图时为 true，不能覆盖已存在文件；默认更新现有拼图。' },
         output: {
           type: 'string',
@@ -175,7 +158,6 @@ export function registerComposePanels(ctx: Context): void {
                   properties: {
                     width: { type: 'number' },
                     height: { type: 'number' },
-                    gap: { type: 'number' },
                     cells: {
                       type: 'array',
                       items: {
@@ -187,16 +169,6 @@ export function registerComposePanels(ctx: Context): void {
                           y: { type: 'number' },
                           width: { type: 'number' },
                           height: { type: 'number' },
-                          content: {
-                            type: 'object',
-                            additionalProperties: false,
-                            properties: {
-                              x: { type: 'number' },
-                              y: { type: 'number' },
-                              width: { type: 'number' },
-                              height: { type: 'number' },
-                            },
-                          },
                         },
                       },
                     },
@@ -223,16 +195,16 @@ export function registerComposePanels(ctx: Context): void {
 /** Shared by the atomic tool and the manual editor Remote. */
 export async function composePanels(args: ComposeRequest, cwd: string, signal: AbortSignal): Promise<ComposeResult> {
   if (args.assets.length < 1) throw new Error('至少添加一张图片')
-  const scale = args.scale ?? 1
+  const scale = args.scale ?? DEFAULT_SCALE
   if (!Number.isFinite(scale) || scale <= 0) throw new Error('导出倍率必须为正数')
   const outputPath = resolveWorkspacePath(args.output, cwd)
   if (extname(outputPath).toLocaleLowerCase() !== '.png') throw new Error('output 必须是 PNG 文件')
   const projectDir = projectDirForOutput(outputPath)
   const groupsPath = join(projectDir, 'groups.json')
-  const groupAsset = assetReference(projectDir, outputPath)
+  // output 必在 <project>/groups/ 下（见 projectDirForOutput），登记的相对路径即 groups/<name>.png。
+  const groupAsset = relative(projectDir, outputPath).replaceAll('\\', '/')
   let groupId = basename(outputPath, extname(outputPath))
   assertSafeAssetId(groupId)
-  assertInsideDirectory(outputPath, projectDir)
   assertInsideDirectory(await realpath(projectDir), await realpath(cwd))
   await mkdir(dirname(outputPath), { recursive: true })
   assertInsideDirectory(await realpath(dirname(outputPath)), await realpath(projectDir))
@@ -245,15 +217,14 @@ export async function composePanels(args: ComposeRequest, cwd: string, signal: A
   for (const [index, inputPath] of inputPaths.entries()) {
     assertInsideDirectory(await realpath(inputPath).catch(() => inputPath), await realpath(projectDir))
     const projectRelative = relative(projectDir, inputPath).replaceAll('\\', '/')
-    if (!projectRelative.startsWith('figures/') || projectRelative !== `figures/${ids[index]}.png`) {
+    if (projectRelative !== `figures/${ids[index]}.png`) {
       throw new Error(`成员图片必须是项目内 figures/${ids[index]}.png：${inputPath}`)
     }
   }
 
   return withFileLock(groupsPath, async () => {
-    const initialDigest = await groupsDigest(groupsPath)
+    const { groups, digest: initialDigest } = await readGroupsWithDigest(groupsPath)
     if (args.base_digest !== undefined && args.base_digest !== initialDigest) throw new Error('拼图文件已被修改，草稿已保留；请重新加载后再保存。')
-    const groups = await readGroups(groupsPath)
     const previousOutput = await readFile(outputPath).catch(error => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
       throw error
@@ -268,19 +239,18 @@ export async function composePanels(args: ComposeRequest, cwd: string, signal: A
     }
     const images = await Promise.all(inputPaths.map((path, index) => readInput(path, ids[index]!)))
     throwIfAborted(signal)
-    if (args.inputs && (args.inputs.length !== images.length || images.some(image => args.inputs!.find(input => input.id === image.id)?.digest !== bytesDigest(image.bytes)))) throw new Error('图源已变化，草稿已保留；请重新加载图源后再保存。')
+    if (args.inputs && (args.inputs.length !== images.length || images.some(image => args.inputs!.find(input => input.id === image.id)?.digest !== sha256Hex(image.bytes)))) throw new Error('图源已变化，草稿已保留；请重新加载图源后再保存。')
     const explicit = args.geometry === undefined ? undefined : validateGeometry(args.geometry, ids)
-    const chosen = explicit ? undefined : chooseLayout(images.length, images, args.layout_hint, GAP_PT)
-    const reference: CompositionGeometry = explicit ?? { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, gap: GAP_PT, cells: chosen!.cells.map((cell, i) => ({ member: ids[i]!, ...cell })) }
+    const chosen = explicit ? undefined : chooseLayout(images.length, images, args.layout_hint)
+    const reference: CompositionGeometry = explicit ?? { ...DEFAULT_CANVAS, cells: chosen!.cells.map((cell, i) => ({ member: ids[i]!, ...cell })) }
     const geometry = fitComposition(reference, images)
     const orderedImages = geometry.cells.map(cell => images.find(image => image.id === cell.member)!)
     const png = await composePng(orderedImages, geometry, scale)
     throwIfAborted(signal)
-    const inputsDigest = digestMembers(orderedImages)
-    const cells = geometry.cells.map(cell => ({ ...cell, content: fitImageToCell(cell, images.find(image => image.id === cell.member)!) }))
-    const layout: CompositionLayout = { kind: explicit ? 'manual' : chosen!.kind, geometry: { ...geometry, cells } }
-    if (await groupsDigest(groupsPath) !== initialDigest) throw new Error('拼图文件在导出期间发生变化，请重新加载。')
-    for (const image of images) if (bytesDigest(await readFile(image.path)) !== bytesDigest(image.bytes)) throw new Error('图源在导出期间发生变化，请重新加载。')
+    const inputsDigest = digestMembers(orderedImages.map(image => ({ id: image.id, digest: sha256Hex(image.bytes) })))
+    const layout: CompositionLayout = { kind: explicit ? 'manual' : chosen!.kind, geometry }
+    if (await groupsFileDigest(groupsPath) !== initialDigest) throw new Error('拼图文件在导出期间发生变化，请重新加载。')
+    for (const image of images) if (sha256Hex(await readFile(image.path)) !== sha256Hex(image.bytes)) throw new Error('图源在导出期间发生变化，请重新加载。')
     const entry: GroupEntry = {
       id: groupId,
       asset: groupAsset,
@@ -307,7 +277,7 @@ export async function composePanels(args: ComposeRequest, cwd: string, signal: A
       group: groupId,
       members: entry.members,
       inputs_digest: inputsDigest,
-      groups_digest: bytesDigest(nextText),
+      groups_digest: sha256Hex(nextText),
       layout: entry.layout as ComposeResult['layout'],
     }
   }, { signal })

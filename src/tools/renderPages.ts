@@ -1,10 +1,9 @@
-import { mkdir } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { atomicWriteFile } from '../files.ts'
 import { PdfFile } from '../pdf/pdf.ts'
-import { pageSuffix, resolveWorkspacePath, stableStem, workspaceCwd, displayWorkspacePath } from '../paths.ts'
+import { pageImagePath, resolveWorkspacePath, workspaceCwd, displayWorkspacePath } from '../paths.ts'
 
 /**
  * render_pages：PDF 页 → PNG 底图（架构 §3）。
@@ -82,13 +81,10 @@ export function registerRenderPages(ctx: Context): void {
         if (invalid.length > 0) {
           throw new Error(`页码越界：${invalid.join(', ')}（共 ${file.numPages} 页）`)
         }
-        const stem = stableStem(abs, 'doc')
-        const outputDir = join(dirname(abs), 'pages')
-        await mkdir(outputDir, { recursive: true })
         const rendered: Array<{ page: number; path: string; width: number; height: number }> = []
         for (const page of [...new Set(args.pages)].sort((a, b) => a - b)) {
           const png = await file.renderPage(page, dpi, exec.signal)
-          const outPath = join(outputDir, `${stem}-${pageSuffix(page)}.png`)
+          const outPath = pageImagePath(abs, page)
           await atomicWriteFile(outPath, png.data)
           rendered.push({ page, path: displayWorkspacePath(outPath, cwd), width: png.width, height: png.height })
         }
@@ -96,7 +92,7 @@ export function registerRenderPages(ctx: Context): void {
           pdf: displayWorkspacePath(abs, cwd),
           num_pages: file.numPages,
           dpi,
-          output_dir: displayWorkspacePath(outputDir, cwd),
+          output_dir: displayWorkspacePath(dirname(pageImagePath(abs, 1)), cwd),
           rendered,
         }
       },

@@ -26,7 +26,7 @@ it('自由拼图可添加九张图、调整排列与撤销，紧密导出且保�
 })
 
 it('贴合画布保留相对位置，角点缩放保持比例，密集建议仍产生正尺寸', () => {
-  const g={width:900,height:500,gap:0,cells:[{member:'a',x:-50,y:20,width:100,height:40},{member:'b',x:100,y:-10,width:90,height:100}]}
+  const g={width:900,height:500,cells:[{member:'a',x:-50,y:20,width:100,height:40},{member:'b',x:100,y:-10,width:90,height:100}]}
   const fitted=fitCanvas(g)
   expect(fitted).toMatchObject({width:240,height:100})
   expect(fitted.cells[1]!.x-fitted.cells[0]!.x).toBe(150)
@@ -83,17 +83,17 @@ it('单张素材读取失败不影响其他图片，大图内可重试且不改�
 
 
 it('外缘导出去掉容器留白，保留内部间距与负坐标图片，重复规范化不变', () => {
-  const geometry={width:960,height:540,gap:12,cells:[{member:'a',x:-100,y:-40,width:200,height:200},{member:'b',x:180,y:0,width:100,height:100}]}
+  const geometry={width:960,height:540,cells:[{member:'a',x:-100,y:-40,width:200,height:200},{member:'b',x:180,y:0,width:100,height:100}]}
   const assets=[{id:'a',width:200,height:100},{id:'b',width:100,height:100}]
   expect(compositionBounds(geometry,assets)).toEqual({x:-100,y:0,width:380,height:110})
   const tight=fitComposition(geometry,assets)
-  expect(tight).toEqual({width:380,height:110,gap:12,cells:[{member:'a',x:0,y:10,width:200,height:100},{member:'b',x:280,y:0,width:100,height:100}]})
+  expect(tight).toEqual({width:380,height:110,cells:[{member:'a',x:0,y:10,width:200,height:100},{member:'b',x:280,y:0,width:100,height:100}]})
   expect(fitComposition(tight,assets)).toEqual(tight)
 })
 
 function refreshFixture(): CompositionState {
   const assets = ['a','b'].map(id => ({id,label:`Figure 1 · ${id}`,asset:`figures/${id}.png`,width:100,height:60,digest:`old-${id}`}))
-  return {digest:'base',warnings:[],assets,groups:['one','two'].map(id => ({id,asset:`groups/${id}.png`,members:['a','b'],inputs_digest:'old',layout:{kind:'manual',geometry:{width:350,height:100,gap:12,cells:[{member:'a',x:20,y:10,width:100,height:60},{member:'b',x:200,y:10,width:100,height:60}]}}}))}
+  return {digest:'base',warnings:[],assets,groups:['one','two'].map(id => ({id,asset:`groups/${id}.png`,members:['a','b'],inputs_digest:'old',layout:{kind:'manual',geometry:{width:350,height:100,cells:[{member:'a',x:20,y:10,width:100,height:60},{member:'b',x:200,y:10,width:100,height:60}]}}}))}
 }
 
 it('适应模式跟随图片外缘且 SVG 高宽比同步，手动放大仍保留', async () => {

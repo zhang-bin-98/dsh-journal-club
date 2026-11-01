@@ -117,7 +117,7 @@ export function createProjectStore(deps: WorkspaceResourceDeps): ProjectStore {
         try {
           figures = parseFigures(figuresResult.value.text)
         } catch (error) {
-          figuresError = error instanceof Error ? error.message : String(error)
+          figuresError = messageOf(error)
         }
       } else if (readFailed(figuresResult)) {
         figures = previousFigures
@@ -258,6 +258,6 @@ function isMissingResourceError(error: unknown): boolean {
   return message.includes('not found') || message.includes('no entry') || message.includes('workspace-file/not-found')
 }
 
-function messageOf(error: unknown): string {
+export function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
