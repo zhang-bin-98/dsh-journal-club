@@ -11,8 +11,8 @@
 
 ## D2 人工介入：三个确认点
 
-- **决策**：图源核对、outline.md、deck.md 渲染前三个暂停点；其余自动。确认点 3 是成本门槛（markdown 预览/拼图秒级 vs PPTX 渲染分钟级）。
-- **被否**：全自动 + 事后修改（切错返工贵）；逐步深度确认（繁琐）。确认点最初为 2 个，deck 渲染前确认是评审前用户补充（渲染成本论据）。
+- **决策**：图源核对、outline.md、slides.md 渲染前三个暂停点；其余自动。确认点 3 是成本门槛（markdown 预览/拼图秒级 vs PPTX 渲染分钟级）。
+- **被否**：全自动 + 事后修改（切错返工贵）；逐步深度确认（繁琐）。确认点最初为 2 个，slides 渲染前确认是评审前用户补充（渲染成本论据）。
 
 ## D3 文件即真相，无项目列表
 
@@ -22,9 +22,9 @@
 
 ## D4 产物 markdown 化，PPTX 不自研
 
-- **决策**：outline.md / deck.md 人读 markdown 契约（维护 = 编辑文件，dsh 预览自动刷新）；PPTX 生成交生态插件（主路径 dsh-ppt-maker：agent 读 deck.md 构建 PPTD 工程）；deck.md 单向派生，不双向同步。
+- **决策**：outline.md / slides.md 人读 markdown 契约（维护 = 编辑文件，dsh 预览自动刷新）；PPTX 生成交生态插件（主路径 dsh-ppt-maker：agent 读 slides.md 构建 PPTD 工程）；slides.md 单向派生，不双向同步。
 - **理由**：用户指定「生成 markdown 版 ppt，预览靠现成的，只维护拼图小模块」；生态调研证实无插件直接吃 markdown，agent 即转换器。
-- **被否**：自研 PptxGenJS 导出（SmartJC 遗产但 v1 不搬）；deck 用 PPTD YAML 直接表达（人读与预览差）。
+- **被否**：自研 PptxGenJS 导出（SmartJC 遗产但 v1 不搬）；slides 用 PPTD YAML 直接表达（人读与预览差）。
 
 ## D5 预览全部依赖 dsh 现成能力
 
@@ -122,7 +122,7 @@ M2 将 v3.1 的数据完整性契约落为可回归的 Node 实现，默认细�
 2. **乐观锁与并发**：`base_rev` 必须是非负整数；写入时在独占 `.lock` 下重新读取当前文件并比较 revision，进程内同一路径再串行排队。匹配才应用 patch；冲突返回结构化结果，不改主文件、不生成快照。残留锁回收见 D30。
 3. **快照**：成功替换前写入项目 `.history/`，保存旧 figures.json；默认保留最近 10 份，超出滚动清理。主文件采用临时文件完整写入后 rename；快照或主文件写失败均不推进 revision。
 4. **跨字段校验**：写入前除基础 schema 外检查 document/figure/panel ID 唯一、region/document/page 引用、region_index、caption_refs、asset 身份与有限非退化 bbox。crop 的 asset 回写也通过该唯一写入服务，避免第二套写入口。
-5. **validate 分层**：程序只报告确定性 `errors`/`warnings`；figures.json 跨字段违例复用第 4 条同一规则，统一报 `FIGURES_INVALID`（D30）；deck 页头、页号、来源、图片身份、图组成员、讲稿缺失属于 error；旧 figures revision、图组 digest 失配、Panel 未引用、图文讲稿不对应属于 warning；outline 只检查存在与 revision，不把发现覆盖和叙事质量伪装成程序判定。
+5. **validate 分层**：程序只报告确定性 `errors`/`warnings`；figures.json 跨字段违例复用第 4 条同一规则，统一报 `FIGURES_INVALID`（D30）；slides 页头、页号、来源、图片身份、图组成员、讲稿缺失属于 error；旧 figures revision、图组 digest 失配、Panel 未引用、图文讲稿不对应属于 warning；outline 只检查存在与 revision，不把发现覆盖和叙事质量伪装成程序判定。
 6. **M1 安全收口**：工具相对路径按 dsh session cwd 解析；panel ID 拒绝路径穿越和 Windows 保留名；PNG 原子替换；PDF 缓存按 size/mtime/ctime 失效；render_pages 对清洗后可能碰撞的源文件名追加稳定短标识。
 
 M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均通过；真实 dsh 安装加载仍待宿主环境验收。
@@ -197,7 +197,7 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 
 ## D23 PPTX 内容完整性与预览异常（2026-10-30）
 
-- **实测**：独立工作区真实会话已导出 24 页。首版页数、图片数与备注数均正确，但第 3–24 页备注被模型压缩，违背 deck 唯一内容源；只数备注不能发现该问题。正常重新导出后，按 slide→notesSlide 关系逐页比较，24 页讲稿与 deck 全文一致（仅去 Markdown 格式并归一化空白），30 张引用图片字节均保留。
+- **实测**：独立工作区真实会话已导出 24 页。首版页数、图片数与备注数均正确，但第 3–24 页备注被模型压缩，违背 slides 唯一内容源；只数备注不能发现该问题。正常重新导出后，按 slide→notesSlide 关系逐页比较，24 页讲稿与 slides 全文一致（仅去 Markdown 格式并归一化空白），30 张引用图片字节均保留。
 - **外部差异**：`ppt_render` 预览明显放大并截断。独立 PowerPoint 受保护视图抽查第 1、4、7、8、15、20 页，未复现该比例异常；暂不据此推定具体底层原因，也不通过缩小内容去补偿错误预览。
 - **决策**：skill 明确备注只复制不摘要，导出后核对逐页正文；异常预览使用可用的独立查看器复核。结构、语义、视觉分别记录，XML 几何不代替目视检查。沿用外部 PPT 能力，不自建转换器或渲染器。
 - **边界**：首版上述六页仅为抽查，当时邻图残影明显、来源脚注偏浅。后续 revision 341 的 24 页已在 PowerPoint 逐页检查；后续脚注定向复验与最终备注全文比对通过，三篇完整流程未通过。版本证据及复核脚本见 [M6 记录](verification/m6-cold-start.md)。
@@ -207,7 +207,7 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **实测**：上一轮“只外扩”的局部修复被保留为项目全局约定，造成邻图轴标题、字母反复串入。独立人工对照原页，Figure 2/3 等可收紧；Figure 1/4/5/6 的部分自身轴标题与相邻字母交错，简单矩形不能同时无残影且完整。候选边界若截断自身标签，不应用。
 - **决策**：只外扩缺失自身内容的边，能安全收紧的边收紧；不可分离时停止循环，保留字母 Panel 身份和疑点，使用同一 region 的 whole-Panel 作为整图参考。沿用现有字段、update_figures/CAS、crop 和快照，不新增识别算法、工具或遮罩。整图兜底不算作独立切分成功。
 - **源文件差异**：Figure 4C 浅色“Density”在 PDF.js 与独立 Poppler 整页渲染中均存在，记录为原 PDF 痕迹，不擦除科研像素伪装修复。
-- **验证边界**：本次人工修正不冒称模型自动切分成功；按 D28 允许其作为正常人工核对环节，≤2 轮仅作效果记录。派生 deck/PPTX 必须同步并重新核验，见 [M6 记录](verification/m6-cold-start.md)。
+- **验证边界**：本次人工修正不冒称模型自动切分成功；按 D28 允许其作为正常人工核对环节，≤2 轮仅作效果记录。派生 slides/PPTX 必须同步并重新核验，见 [M6 记录](verification/m6-cold-start.md)。
 
 ## D25 区分渲染 fixture 与全流程论文范围（2026-10-30）
 
@@ -236,7 +236,7 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 ## D29 PPT 图片等比适配（2026-10-30）
 
 - **实测**：QCIC 宿主编排发现图片虽设置适配意图，仍被导出路径按元素框拉伸。模型按实际图片宽高比修正 PPTD 图片框后，默认导出检查 0 问题；最终 17 页 PowerPoint 放映未见比例失真，见 [QCIC 验收](verification/m6-cold-start/qcic-source-audit.md)。不据此推定外部插件所有版本都忽略同一选项。
-- **决策**：沿用外部 PPT 工具，在编排层让图片框本身保持源比例，并复验实际导出。skill 和 deck 对接文档补充这一规则；不自建适配器、渲染器或修改科学图像。
+- **决策**：沿用外部 PPT 工具，在编排层让图片框本身保持源比例，并复验实际导出。skill 和 slides 对接文档补充这一规则；不自建适配器、渲染器或修改科学图像。
 
 ## D30 实现收敛：crop 单次回写、残留锁回收、校验同源（2026-10-30）
 
@@ -244,13 +244,13 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **决策**：crop 将本次新资产路径合成一个 patch，经同一写入入口回写（至多 revision+1）；已登记 asset 的 panel 只在 revision 未变时替换像素，不增加版本。异常项列入 anomalies，不阻断其余 panel，`cropped` 只列实际落盘的资产；写入冲突时丢弃暂存图并报错。锁逻辑合并为 `src/fileLock.ts`，figures.json 与 groups.json 共用；锁内容记录的 pid 已退出，或锁内容为空/不可解析且超过 5 秒（含旧版 compose 留下的空锁），即回收；删除前复读锁内容以缩小多进程同时回收的竞态，仍属尽力而为。像素替换与 asset 登记的顺序及锁范围后由 D37 收紧。
 - **同源**：validate 复用 `figuresJsonIssues`（与 update_figures 写入前校验同一规则，原先两套规则不一致，validate 漏查负坐标和 asset 路径）；groups.json 解析与成员指纹集中在 `src/groups.ts`，compose_panels 与 validate 共用同一算法。MinerU 换算 `mineruBBoxToPt`/`parseContentList` 经 `./project` 导出，skill 改为调用 helper，不再手算。client figures 类型改由 zod schema 推导。
 - **顺带修正**：validate 工具摘要原先把 errors 与 warnings 混排、无法区分，改为分组标题；不再随包发布无法独立运行的 `src/tools/composePanels.ts`、`src/layout/**` 源码（其依赖未随包，运行时只用 lib）。
-- **保留**：自研 RFC 6902 patch 与 jc.md frontmatter 解析不换成第三方库——两者已有安全检查与回归，换库仍需自写 revision 保护与严格度约束，收益有限且新增依赖。三处 frontmatter 解析严格度不同（jc.md 严格、deck/状态卡宽松），合并会改变容错行为，暂不合并。jc.md 的 `figures_revision` 处理见 D31。
+- **保留**：自研 RFC 6902 patch 与 jc.md frontmatter 解析不换成第三方库——两者已有安全检查与回归，换库仍需自写 revision 保护与严格度约束，收益有限且新增依赖。三处 frontmatter 解析严格度不同（jc.md 严格、slides/状态卡宽松），合并会改变容错行为，暂不合并。jc.md 的 `figures_revision` 处理见 D31。
 - **验证**：106/106 回归（新增 crop 部分异常单次回写、落盘失败撤回 asset、残留锁回收、compose/validate 指纹一致、跨字段违例报告、validate 摘要分组六项；移除无调用方的 `pageSizeFromImage` 用例）、typecheck、build 通过；未在真实宿主重测。
 
 ## D31 jc.md 移除 figures_revision（2026-10-30）
 
 - **问题**：jc.md 的 `figures_revision` 与 `confirmations.figures.revision`、figures.json 的 `revision` 重复。代码与状态卡均不读取它，确认有效性只比对确认记录与 figures.json；它只会在图源变更后过期，违背「文件即真相」。
-- **决策**（用户确认彻底删除）：jc.md 契约不再包含该字段，helper 不再接受、校验或写出它。figures 版本只存在于 figures.json 与确认记录。outline.md/deck.md frontmatter 的 `figures_revision` 是另一契约（validate 据此提示引用旧版本），保持不变。
+- **决策**（用户确认彻底删除）：jc.md 契约不再包含该字段，helper 不再接受、校验或写出它。figures 版本只存在于 figures.json 与确认记录。outline.md/slides.md frontmatter 的 `figures_revision` 是另一契约（validate 据此提示引用旧版本），保持不变。
 - **兼容**：jc.md 解析本就忽略未知键，旧项目中遗留的字段可照常读取，下次经 helper 写入时自然移除，无需迁移。
 - **同步**：[对话入口](product/对话入口.md) §5 示例、skill 的 formats.md 与 SKILL 字段清单；新增遗留字段兼容回归。
 
@@ -279,7 +279,7 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **用户决定**：自由拖动拼图，不限制画布比例和图片数量；系统建议可采纳但不覆盖手调。撤销此前讨论中的固定 16:9 与四图上限，两者不是产品约束。拼图是 PPT 中的一块图片素材，导出边界由图片外缘确定，不要求先设置固定画布。
 - **实现**：JC tab 新增自由拼图页面，原生 SVG/Pointer Events + 本地编辑草稿，图片拖动/等比缩放、默认适应模式自动跟随图片外缘（手势中冻结、结束后取景）、外缘自动导出、查看全部图片、建议排版、撤销重做、保存与放大。SmartJC 的分区评分规则继续复用，改为支持任意正成员数与画布尺寸；不搬分区树、三栏结构或持久状态库。
 - **素材修订**：用户在宿主反馈纯编号列表难选图，右栏改为默认「素材」与「属性」标签。素材完整缩略图按 Figure 分组，预览与添加按钮分离，已加入卡片保留并可定位；原生大图预览支持原图尺寸，关闭归还焦点与滚动位置。按需读取已有 PNG，无新后端服务。Gemini 3.8 Flash 再次评审该交互，采纳热区分离、稳定占位和焦点恢复建议。
-- **文件与并发**：保留 groups.json version 1 与 layout.geometry，增加 manual 几何入参；UI/工具共用 composePanels，host 的两个 Remote 仅提供会话内载入/保存，官方 Typert 生成协议。文件摘要和图源内容摘要拒绝过期保存，草稿保留。导出沿用 sharp 与稳定 PNG 路径；工作台默认 2 倍像素。没有新增流程工具或审批点。用户进一步确认左栏滚轮直接切组；改裁切沿用原图源核对页，返回后刷新素材保留排版及撤销历史，读取成功后自动保存并重建当前拼图，其他受影响图组只标记待更新。并发版本只在保存成功后推进，不新增界面或自动级联任务。对话协作采用用户确认的单个「加入对话」按钮：复用宿主 inputActions 将明确图组与文件引用放入当前会话草稿，未保存时先保存，不自动发送或持续同步选中状态。AI 写入 groups.json 后由宿主文件通知自动更新已保存布局和缩略图，保留选中项；有未保存手动修改时保留草稿并使用原有重载入口。已有图组在文件清单中原位更新，新建才追加；页面顺序以 deck.md 首次引用为准，无文稿才用清单顺序。移除引用、清单条目或 PNG 的旧图不再显示，新建未引用草稿暂留会话末尾；列表过滤不删除磁盘旧文件，不引入单独的排序存储。修改保留原 ID 和 asset，工具默认只更新已登记输出；只有明确新建/另存传 create:true，且拒绝覆盖。加入对话携带固定输出约束，不根据成员相同自动合并。经用户指定的旧重复产物单独核对引用并备份清理，不引入自动清理服务。
+- **文件与并发**：保留 groups.json version 1 与 layout.geometry，增加 manual 几何入参；UI/工具共用 composePanels，host 的两个 Remote 仅提供会话内载入/保存，官方 Typert 生成协议。文件摘要和图源内容摘要拒绝过期保存，草稿保留。导出沿用 sharp 与稳定 PNG 路径；工作台默认 2 倍像素。没有新增流程工具或审批点。用户进一步确认左栏滚轮直接切组；改裁切沿用原图源核对页，返回后刷新素材保留排版及撤销历史，读取成功后自动保存并重建当前拼图，其他受影响图组只标记待更新。并发版本只在保存成功后推进，不新增界面或自动级联任务。对话协作采用用户确认的单个「加入对话」按钮：复用宿主 inputActions 将明确图组与文件引用放入当前会话草稿，未保存时先保存，不自动发送或持续同步选中状态。AI 写入 groups.json 后由宿主文件通知自动更新已保存布局和缩略图，保留选中项；有未保存手动修改时保留草稿并使用原有重载入口。已有图组在文件清单中原位更新，新建才追加；页面顺序以 slides.md 首次引用为准，无文稿才用清单顺序。移除引用、清单条目或 PNG 的旧图不再显示，新建未引用草稿暂留会话末尾；列表过滤不删除磁盘旧文件，不引入单独的排序存储。修改保留原 ID 和 asset，工具默认只更新已登记输出；只有明确新建/另存传 create:true，且拒绝覆盖。加入对话携带固定输出约束，不根据成员相同自动合并。经用户指定的旧重复产物单独核对引用并备份清理，不引入自动清理服务。
 - **Gemini 评审**：通过 agy CLI 的 Gemini 3.8 Flash 讨论页面，采纳错位新增、空白取消选择、单手势撤销、贴合图片范围；不采纳选中即改导出层级。此前 Gemini 的固定四图建议已被用户明确否定，不作为实现限制。
 - **验证**：见 [自由拼图验收](verification/free-composition-20261031.md)，区分自动化、独立浏览器与宿主验收状态。
 
@@ -296,6 +296,13 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **决策**（用户接受，确认删除 gap）：crop 新增 `withFiguresLock` 作用域：锁内确认 revision 未变 → 换像素 → 一次登记新 asset；先落盘再登记，失败不留悬空引用，删除锁外撤回。指纹只在 `groups.ts`（`digestMembers` 接收内容摘要，`sameDigest` 比较），`sha256Hex`/`throwIfAborted` 在 `files.ts`；groups.json 一次读取同时取内容与摘要。拼图载入/保存移入 `src/compositionService.ts`，host 只做会话解析。`projectFile`、`isInsideDirectory`、`pageImagePath` 收进 `paths.ts`，render_pages 与 host 共用页图路径。groups.json 不再写 `gap` 与 `content`；compose_panels 默认 `scale` 改为 2。参考画布与建议间距改为 `DEFAULT_CANVAS`/`DEFAULT_GAP` 常量。validate 的 panel 越界只由 schema 报 FIGURES_INVALID，不再重复报 ASSET_PATH_ESCAPE（图组越界仍报）。
 - **兼容**：旧 groups.json 与旧入参中的 `gap`、`cell.content` 读取时忽略，下次保存自然移除；真实牙龈项目 38 个带 gap 的图组照常载入（0 过期、0 丢弃），validate 无错误。已用 1 倍导出的旧 PNG 不自动重导，下次保存或重建时变为 2 倍。
 - **验证**：142/142 回归、typecheck（含未使用变量检查）与构建通过。新增 crop 锁内冲突用例：他人持锁期间推进 revision，crop 报冲突且不覆盖已有像素——在本次修改前的代码上失败（锁外已换像素）。旧 gap/content 入参被忽略且不写回、默认 2 倍尺寸有回归。未在真实宿主复验。
+
+## D38 幻灯片文稿统一命名 slides（2026-11-01）
+
+- **决策**：用户确认项目尚未发布，无需兼容旧命名。幻灯片内容源统一为 `slides.md`；阶段名、确认记录键、聊天卡片 stage 与确认指令同步统一为 `slides`（`confirmations.slides`、`/jc confirm slides`），解析接口使用 `parseSlides`，缺失文稿错误码为 `SLIDES_MISSING`。不提供旧名别名、双读或自动迁移。
+- **文件职责**：`jc.md` 仅保存流程提示、要求与确认记录；图源事实在 `figures.json` 及其 PNG，拼图事实在 `groups.json` 及其 PNG，文稿内容与图片引用顺序在 `slides.md`。UI 概览派生这些文件的状态，不新增第二份流程真相。改名不改变这些文件接口的解耦关系。
+- **范围**：同步工具、helper、工作台预览与监听、拼图引用排序、随包提示词、格式文档及回归样例。历史验收报告保留当时真实文件名和结果；仓库外的旧验收项目本轮不迁移。新的工作台导航与原生风格方案尚待实现，不能把本次改名视为 UI 改造完成。
+- **验证**：类型检查、构建及 142/142 回归（21 个测试文件）通过，记录位于忽略目录 `out/slides-rename-tests.txt`；包含新文件名下的确认摘要、文稿校验与拼图引用顺序回归。尚未在真实宿主复验。
 
 ## 修订记录
 
@@ -325,3 +332,13 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - 2026-10-31：D35（任意比例/图数的自由拼图页面，复用 compose 核心并保护手调草稿）。
 - 2026-10-31：D36（工作台写入排队与跨本端版本、figures.json 读取失败保留、补图页图不随刷新清空、确认图源时先全量重裁；同步修订图源核对 §4/§6、架构 §4.1 与当前状态、SKILL）。
 - 2026-11-01：D37（crop 锁内落盘、指纹与路径工具同源、拼图服务移出 host、删除 gap/content、compose 默认 2 倍；同步修订 D30、架构 §2/§3/§4.2/§5、自由拼图、formats.md）。
+- 2026-11-01：D38（文稿文件及阶段、确认契约统一命名 slides，不保留旧名兼容）。
+## D39 工作台分页面、会话浏览记忆与局部工具（2026-11-01）
+
+**决定**：采用产品 §3.1 的导航；概览独立于编辑页。图源、拼图和文稿通过各自文件解耦；局部图源或图组不要求 jc.md。文件内容/确认与浏览偏好分开；只有浏览偏好使用按会话隔离的本地键。切页面不卸载编辑器，关闭页签复用宿主 registerCloseHandler，不增加编辑审批门。
+
+**依据与实测**：已通过 agy 的 gemini-4-argon-medium 两轮讨论；保留既有自动重裁、刷新图源自动保存、任意比例/图数和草稿保护，未采纳固定模板或额外保存步骤。宿主 0.2.1-rc.5 实际主题前缀是 `--dsw-*`，替换此前无效的 `--dsh-alias-*` 引用；navigation.params 不持久化，关闭回调会在抛错时保留页签。当前插件作为一个组件注册五个工具，未提供逐工具 UI 配置；不从文件存在推断工具授权，也不引入新的权限绕过机制。
+
+**外部依赖偏差**：新增 Remote 后客户端热更新但宿主旧 API 注册仍可能返回 404；组件开关重载不足以保证新协议生效，需完整重启宿主。失败时显示状态不可用，不能把未读取的文件记为待产出。测试与宿主验证范围见 [本轮验收](verification/workbench-navigation-20261101.md)。
+
+**视觉修订**：用户实机反馈近黑选框和按钮过重、白底编辑区与导出范围混融、概览缺少重点。经 Gemini 4 两轮设计讨论及实现截图复核，交互恢复蓝色；宿主字体与中性色继续复用，主按钮不再引用近黑 fill。编辑区冷灰、内容白底、选图蓝框与导出外缘灰色实线分开。概览使用单张当前状态卡、常显阶段摘要、主要产物与折叠详情；优先暴露确认异常，不凭 PPTX 存在判定完成。仅改变呈现和基于已有文件状态的下一步推荐，不增加后端状态或流程门。

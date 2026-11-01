@@ -2,6 +2,7 @@
 .zcode/
 .video_agent/
 /out/
+/.playwright-cli/
 
 # Node
 node_modules/

@@ -1,23 +1,23 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export interface DeckImageRef {
+export interface SlidesImageRef {
   alt: string
   path: string
   sourceLine?: string
   source?: string
 }
 
-export interface DeckPage {
+export interface SlidesPage {
   index: number
   declaredPage?: number
-  images: DeckImageRef[]
+  images: SlidesImageRef[]
   speech: string
 }
 
-export interface DeckDocument {
+export interface SlidesDocument {
   frontmatter: Record<string, string>
-  pages: DeckPage[]
+  pages: SlidesPage[]
 }
 
 const PAGE_HEADER = /^<!--\s*page\s+(\d+)(?:\s*·\s*layout:\s*([^>]+?))?\s*-->\s*$/imu
@@ -44,15 +44,15 @@ export function parseFrontmatter(text: string): Record<string, string> {
   return result
 }
 
-export function parseDeck(text: string): DeckDocument {
+export function parseSlides(text: string): SlidesDocument {
   const frontmatter = parseFrontmatter(text)
   const body = text.replace(/^---\s*\n[\s\S]*?\n---\s*(?:\n|$)/u, '')
   const rawPages = body.split(/^---\s*$/m)
-  const pages: DeckPage[] = []
+  const pages: SlidesPage[] = []
   rawPages.forEach(raw => {
     if (!raw.trim()) return
     const header = raw.match(PAGE_HEADER)
-    const images: DeckImageRef[] = []
+    const images: SlidesImageRef[] = []
     for (const match of raw.matchAll(IMAGE)) {
       const alt = match[1] ?? ''
       const path = match[2] ?? ''

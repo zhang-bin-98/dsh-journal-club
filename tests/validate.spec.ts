@@ -8,7 +8,7 @@ import { registerValidate } from '../src/tools/validate.ts'
 import { validateProject } from '../src/validate/project.ts'
 import { isSourceLineValid, panelMentionTokens } from '../src/validate/markdown.ts'
 
-async function project(deck: string, groups = true) {
+async function project(slides: string, groups = true) {
   const dir = await mkdtemp(join(tmpdir(), 'jc-validate-'))
   await mkdir(join(dir, 'figures'), { recursive: true })
   await writeFile(join(dir, 'figures', 'fig1_A.png'), Buffer.from('asset'))
@@ -18,23 +18,23 @@ async function project(deck: string, groups = true) {
     figures: [{ id: 'fig1', label: 'Figure 1', status: 'viewed', regions: [{ document: 'main', page: 1, bbox: [0, 0, 100, 100] }], caption: { page: 1, sentences: ['caption'] }, panels: [{ id: 'fig1_A', label: 'A', region_index: 0, bbox: [10, 10, 50, 50], asset: 'figures/fig1_A.png', caption_refs: [0], flags: [], origin: 'auto' }] }],
   }, null, 2))
   if (groups) await writeFile(join(dir, 'groups.json'), JSON.stringify({ version: 1, groups: [] }))
-  await writeFile(join(dir, 'deck.md'), deck)
+  await writeFile(join(dir, 'slides.md'), slides)
   return dir
 }
 
-const validDeck = `---\nfigures_revision: 2\n---\n\n<!-- page 1 · layout: figure-text -->\n\n# Result\n\n![Figure 1A](figures/fig1_A.png)\n> 来源：Figure 1A · p.1\n\n> 🗣 **讲稿**：这一页讲 Figure 1A。\n`
+const validSlides = `---\nfigures_revision: 2\n---\n\n<!-- page 1 · layout: figure-text -->\n\n# Result\n\n![Figure 1A](figures/fig1_A.png)\n> 来源：Figure 1A · p.1\n\n> 🗣 **讲稿**：这一页讲 Figure 1A。\n`
 
 describe('validate', () => {
   it('补充图 S 编号来源可通过校验，讲稿不混淆正文图号', async () => {
-    const deck = validDeck.replaceAll('Figure 1A', 'Supplementary Figure S9A')
-    const dir = await project(deck)
+    const slides = validSlides.replaceAll('Figure 1A', 'Supplementary Figure S9A')
+    const dir = await project(slides)
     try {
       const report = await validateProject(dir)
       expect(report.errors).toEqual([])
       expect(report.warnings).toEqual([])
       expect(panelMentionTokens('Supplementary Figure S9A、Fig. s9B–C、Figure 9A'))
         .toEqual(expect.arrayContaining(['Figure S9A', 'Figure S9B–C', 'Figure S9', 'Figure 9A', 'Figure 9']))
-      const mismatch = await project(deck.replace('这一页讲 Supplementary Figure S9A', '这一页讲 Figure 9A'))
+      const mismatch = await project(slides.replace('这一页讲 Supplementary Figure S9A', '这一页讲 Figure 9A'))
       try {
         expect((await validateProject(mismatch)).warnings.map(item => item.code)).toContain('SPEECH_IMAGE_MISMATCH')
       } finally { await rm(mismatch, { recursive: true, force: true }) }
@@ -50,7 +50,7 @@ describe('validate', () => {
   })
 
   it('合法项目无 errors', async () => {
-    const dir = await project(validDeck)
+    const dir = await project(validSlides)
     try {
       const report = await validateProject(dir)
       expect(report.errors).toEqual([])
@@ -66,7 +66,7 @@ describe('validate', () => {
   })
 
   it('旧 revision 和 panel 未引用是 warning', async () => {
-    const dir = await project(validDeck.replace('figures_revision: 2', 'figures_revision: 1'))
+    const dir = await project(validSlides.replace('figures_revision: 2', 'figures_revision: 1'))
     try {
       const report = await validateProject(dir)
       expect(report.warnings.map(item => item.code)).toContain('FIGURES_REVISION_STALE')
@@ -104,7 +104,7 @@ describe('validate', () => {
   })
 
   it('figures.json 跨字段约束与写入通道同源，手工改坏时报 FIGURES_INVALID', async () => {
-    const dir = await project(validDeck)
+    const dir = await project(validSlides)
     try {
       const figures = JSON.parse(await readFile(join(dir, 'figures.json'), 'utf8'))
       figures.figures[0].panels[0].bbox = [10, 10, 150, 50]
@@ -116,7 +116,7 @@ describe('validate', () => {
   })
 
   it('validate 工具摘要按 errors / warnings 分组列出问题', async () => {
-    const dir = await project(validDeck.replace('figures_revision: 2', 'figures_revision: 1').replace(/\n> 🗣[^\n]*\n/u, '\n'))
+    const dir = await project(validSlides.replace('figures_revision: 2', 'figures_revision: 1').replace(/\n> 🗣[^\n]*\n/u, '\n'))
     try {
       let tool: ToolDefinition | undefined
       registerValidate({ tools: { register: (definition: ToolDefinition) => { tool = definition } } } as unknown as Context)
@@ -133,7 +133,7 @@ describe('validate', () => {
   })
 
   it('损坏 groups 条目返回 GROUPS_INVALID，不抛异常', async () => {
-    const dir = await project(validDeck)
+    const dir = await project(validSlides)
     try {
       await writeFile(join(dir, 'groups.json'), JSON.stringify({ version: 1, groups: [null] }))
       const report = await validateProject(dir)

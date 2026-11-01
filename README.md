@@ -15,7 +15,7 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 
 安装到 dsh：`dsh plugin add <本仓库路径>`（bundle 声明与插件行见 `package.json` 的
 `dsh` 字段与 `cordis.patch.yml`）。已注册工具：`render_pages`（PDF 页 → PNG 底图）、`crop`（figures.json panel bbox → figures/<id>.png）、
-`compose_panels`（拼合 Panel 并登记 groups.json）、`update_figures`（初始化 / RFC 6902 patch + base_rev CAS + .history 快照）、`validate`（figures/groups/deck 一致性校验）。
+`compose_panels`（拼合 Panel 并登记 groups.json）、`update_figures`（初始化 / RFC 6902 patch + base_rev CAS + .history 快照）、`validate`（figures/groups/slides 一致性校验）。
 
 项目状态 helper 可由 `dsh-journal-club/project` 导入；skill 与文件示例、科研叙事规则、五种研究策略一并随包交付。完整流程在论文子文件夹中创建 `jc.md` 和空 `groups.json`，首次图源写入使用 `update_figures` 的 `base_rev: 0` 初始化协议；局部任务不创建项目状态。
 
@@ -23,13 +23,13 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 
 ## 核心闭环
 
-**在会话工作目录发起 → 插件建项目文件夹并复制 PDF → 论文解析与自动切图（MinerU + agent 视觉）→ 图源核对【确认点 1】→ 叙事大纲 outline.md【确认点 2】→ 幻灯片分页 deck.md 与拼图【确认点 3：渲染前确认】→ PPTX 渲染（agent + 生态插件）。**
+**在会话工作目录发起 → 插件建项目文件夹并复制 PDF → 论文解析与自动切图（MinerU + agent 视觉）→ 图源核对【确认点 1】→ 叙事大纲 outline.md【确认点 2】→ 幻灯片分页 slides.md 与拼图【确认点 3：渲染前确认】→ PPTX 渲染（agent + 生态插件）。**
 
 产品移植自 [SmartJC](https://github.com/)（独立 PWA 形态的同类产品，叙事规则与流程设计的来源），运行形态换成 dsh 插件。
 
 ## 形态要点
 
-- **文件即真相**：一切产物是项目文件夹里的普通文件（`jc.md` / `figures.json` / `analysis.md` / `outline.md` / `deck.md` / 图片），dsh 右侧栏 markdown 预览自动刷新，无私有存储。
+- **文件即真相**：一切产物是项目文件夹里的普通文件（`jc.md` / `figures.json` / `analysis.md` / `outline.md` / `slides.md` / 图片），dsh 右侧栏 markdown 预览自动刷新，无私有存储。
 - **右侧栏工作台 + 聊天轻卡片**：图源核对的富交互（框叠加、调框、裁切预览）在固定的右侧栏工作台；聊天卡片只做流程推进与确认入口。
 - **自由拼图**：编辑区随图片扩展、按图片外缘导出，不限制比例与图片数量；拖动、等比缩放、撤销和保存；自动排版仅提供建议。手动页面与工具共用布局及 PNG 导出，见 [使用设计](docs/product/自由拼图.md)。
 - **agent 信任与自由度**：不自建审批流——agent 修改产物文件与编辑代码同等地位，diff 聊天可见；图源写入统一经 `update_figures`（乐观锁，防并发覆盖）。
@@ -44,7 +44,7 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 | [docs 索引](docs/README.md) | 文档地图、阅读顺序、术语速查 |
 | [产品设计](docs/product/产品设计.md) | 定位、闭环、形态、分步设计、边界 |
 | [图源核对](docs/product/图源核对.md) | 唯一富交互组件的交互细化 |
-| [deck 格式](docs/product/deck格式.md) | deck.md 契约与 PPTX 对接路径 |
+| [slides 格式](docs/product/slides格式.md) | slides.md 契约与 PPTX 对接路径 |
 | [对话入口](docs/product/对话入口.md) | 触发分流、恢复、jc.md 状态文件 |
 | [架构设计](docs/architecture/架构设计.md) | 选型、包结构、工具契约、数据契约、M1–M6 计划 |
 | [决策记录](docs/decisions.md) | 关键决策、理由与被否方案 |
@@ -55,7 +55,7 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 |---|---|
 | M1 | 渲染底座（插件骨架、pdf 封装、render_pages / crop、MinerU CLI 实测） |
 | M2 | 切分剧本与契约（figures.json、agent 视觉切分、update_figures、validate） |
-| M3 | skill 与文件链（全剧本、analysis/outline/deck 生成、确认点与恢复） |
+| M3 | skill 与文件链（全剧本、analysis/outline/slides 生成、确认点与恢复） |
 | M4 | 核对工作台（右侧栏 UI） |
 | M5 | 拼图与渲染（compose_panels + groups.json、PPTX 编排） |
 | M6 | 打磨与端到端验收 |

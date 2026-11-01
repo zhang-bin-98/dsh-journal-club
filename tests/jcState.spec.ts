@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { parseFiguresJson, validateFiguresJson } from '../src/figures/figuresJson.ts'
-import { isSourceLineValid, parseDeck } from '../src/validate/markdown.ts'
+import { isSourceLineValid, parseSlides } from '../src/validate/markdown.ts'
 import {
   createJcFile,
   createJcMarkdown,
@@ -21,7 +21,7 @@ import {
 
 const at = '2026-10-28T12:00:00.000Z'
 const outline = '# Outline\n\n- Finding one\n'
-const deck = '---\ntitle: Deck\n---\n\n<!-- page 1 · layout: text -->\n\n# Result\n\n> 🗣 **讲稿**：Result.\n'
+const slides = '---\ntitle: Slides\n---\n\n<!-- page 1 · layout: text -->\n\n# Result\n\n> 🗣 **讲稿**：Result.\n'
 const groups = '{"version":1,"groups":[]}\n'
 
 function baseState() {
@@ -44,12 +44,12 @@ describe('jc state and confirmation contract', () => {
     const figures = validateFiguresJson(parseFiguresJson(json[0]!, 'skill example'))
     expect(figures.figures[0]?.panels[0]?.id).toBe('fig1_whole')
     expect(JSON.parse(json[1]!)).toEqual({ version: 1, groups: [] })
-    const deck = parseDeck(markdown[2]!)
-    expect(deck.pages).toHaveLength(1)
-    expect(deck.pages[0]?.declaredPage).toBe(1)
-    expect(deck.pages[0]?.speech).toContain('讲稿')
-    expect(isSourceLineValid(deck.pages[0]!.images[0]!.sourceLine!)).toBe(true)
-    expect(deck.pages[0]!.images[0]!.path).toBe(`figures/${figures.figures[0]!.panels[0]!.id}.png`)
+    const slides = parseSlides(markdown[2]!)
+    expect(slides.pages).toHaveLength(1)
+    expect(slides.pages[0]?.declaredPage).toBe(1)
+    expect(slides.pages[0]?.speech).toContain('讲稿')
+    expect(isSourceLineValid(slides.pages[0]!.images[0]!.sourceLine!)).toBe(true)
+    expect(slides.pages[0]!.images[0]!.path).toBe(`figures/${figures.figures[0]!.panels[0]!.id}.png`)
   })
   it('创建、序列化、解析 jc.md，并保留正文备注', () => {
     const raw = createJcMarkdown({
@@ -78,7 +78,7 @@ describe('jc state and confirmation contract', () => {
       confirmations: {
         figures: { revision: 3, at },
         outline: { digest: digestText(outline), at },
-        deck: { digest: digestText(deck), groups_digest: digestText(groups), at },
+        slides: { digest: digestText(slides), groups_digest: digestText(groups), at },
       },
     })
     const parsed = parseJcMarkdown(serializeJcMarkdown(state))
@@ -102,8 +102,8 @@ describe('jc state and confirmation contract', () => {
     expect(updated.updated).toBe('2026-10-29')
     expect(updated.confirmations.figures).toBeUndefined()
     expect(updated.confirmations.outline?.digest).toBe(digestText(outline))
-    const raw = updateJcMarkdown(serializeJcMarkdown(initial), { stage: 'deck' })
-    expect(parseJcMarkdown(raw).stage).toBe('deck')
+    const raw = updateJcMarkdown(serializeJcMarkdown(initial), { stage: 'slides' })
+    expect(parseJcMarkdown(raw).stage).toBe('slides')
   })
 
   it('旧 jc.md 遗留的 figures_revision 仍可解析，下次写入时移除', () => {
@@ -118,12 +118,12 @@ describe('jc state and confirmation contract', () => {
       'confirmations:',
       '  figures: { revision: 3, at: 2026-10-26T14:00 }',
       `  outline: { digest: ${digestText(outline)}, at: 2026-10-26T14:00:00+08:00 }`,
-      `  deck: { digest: ${digestText(deck)}, groups_digest: ${digestText(groups)}, at: "2026-10-26T14:00, reviewed" }`,
+      `  slides: { digest: ${digestText(slides)}, groups_digest: ${digestText(groups)}, at: "2026-10-26T14:00, reviewed" }`,
     ].join('\n'))
     expect(parseJcMarkdown(raw).confirmations).toEqual({
       figures: { revision: 3, at: '2026-10-26T14:00' },
       outline: { digest: digestText(outline), at: '2026-10-26T14:00:00+08:00' },
-      deck: { digest: digestText(deck), groups_digest: digestText(groups), at: '2026-10-26T14:00, reviewed' },
+      slides: { digest: digestText(slides), groups_digest: digestText(groups), at: '2026-10-26T14:00, reviewed' },
     })
   })
 
@@ -132,18 +132,18 @@ describe('jc state and confirmation contract', () => {
       confirmations: {
         figures: { revision: 3, at },
         outline: { digest: digestText(outline), at },
-        deck: { digest: digestText(deck), groups_digest: digestText(groups), at },
+        slides: { digest: digestText(slides), groups_digest: digestText(groups), at },
       },
     })
     const current = {
       figures: { revision: 3 },
       outline: { digest: digestText(outline) },
-      deck: { digest: digestText(deck + 'changed'), groups_digest: digestText(groups) },
+      slides: { digest: digestText(slides + 'changed'), groups_digest: digestText(groups) },
     }
     const summary = summarizeConfirmations(state, current)
     expect(summary.figures).toMatchObject({ status: 'confirmed', valid: true })
     expect(summary.outline).toMatchObject({ status: 'confirmed', valid: true })
-    expect(summary.deck).toMatchObject({ status: 'stale', valid: false })
+    expect(summary.slides).toMatchObject({ status: 'stale', valid: false })
     expect(summarizeConfirmations(baseState(), current).figures.status).toBe('missing')
   })
 
@@ -153,13 +153,13 @@ describe('jc state and confirmation contract', () => {
       await mkdir(join(dir, 'parse'), { recursive: true })
       await writeFile(join(dir, 'figures.json'), JSON.stringify({ version: 1, revision: 3 }))
       await writeFile(join(dir, 'outline.md'), outline)
-      await writeFile(join(dir, 'deck.md'), deck)
+      await writeFile(join(dir, 'slides.md'), slides)
       await writeFile(join(dir, 'groups.json'), groups)
       const state = updateJcState(baseState(), {
         confirmations: {
           figures: { revision: 3, at },
           outline: { digest: digestText(outline), at },
-          deck: { digest: digestText(deck), groups_digest: digestText(groups), at },
+          slides: { digest: digestText(slides), groups_digest: digestText(groups), at },
         },
       })
       await createJcFile(join(dir, 'jc.md'), state)
@@ -168,9 +168,9 @@ describe('jc state and confirmation contract', () => {
       await writeFile(join(dir, 'outline.md'), `${outline}changed\n`)
       expect((await summarizeProjectConfirmations(dir)).figures.status).toBe('stale')
       expect((await summarizeProjectConfirmations(dir)).outline.status).toBe('stale')
-      expect((await summarizeProjectConfirmations(dir)).deck.status).toBe('confirmed')
+      expect((await summarizeProjectConfirmations(dir)).slides.status).toBe('confirmed')
       const loaded = await readJcFile(join(dir, 'jc.md'))
-      expect(loaded.confirmations.deck?.groups_digest).toBe(digestText(groups))
+      expect(loaded.confirmations.slides?.groups_digest).toBe(digestText(groups))
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

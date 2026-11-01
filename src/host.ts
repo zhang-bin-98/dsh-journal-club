@@ -1,8 +1,11 @@
 import { basename, relative, resolve } from 'node:path'
+import { readdir } from 'node:fs/promises'
 import { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { FigureEdit, FigureEditResult, PageInfo, PanelCrop, PanelCropResult } from './types.ts'
+import type { FigureEdit, FigureEditResult, PageInfo, PanelCrop, PanelCropResult, ProjectOverview } from './types.ts'
+import { summarizeProjectConfirmations } from './project/jcState.ts'
+import { readGroups } from './groups.ts'
 import { loadCompositionState, saveComposition } from './compositionService.ts'
 import { updateFiguresFile } from './figures/figuresStore.ts'
 import type { CompositionSave, CompositionState } from './layout/composition.ts'
@@ -24,6 +27,32 @@ declare module '@deepseek-ai/cordis' {
 export class JournalClubService extends TypertRemoteService {
   static inject = ['sessions']
   constructor(ctx: Context) { super(ctx, 'journalClub') }
+
+  @Remote({ resources: { session: (sessionId) => sessionId as SessionId } })
+  async projectOverview(sessionId: string, project: string, signal: AbortSignal): Promise<ProjectOverview> {
+    const cwd = sessionCwd(this.ctx, sessionId)
+    const root = await projectFile(cwd, project || '.')
+    const artifacts = (await readdir(root, {withFileTypes: true})).filter(e => e.isFile()).map(e => e.name)
+    // Confirmations read only these contracts; validate real paths before following any links.
+    for (const name of ['jc.md', 'figures.json', 'outline.md', 'slides.md', 'groups.json']) {
+      try { await projectFile(root, name) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    }
+    try {
+      const render = await projectFile(root, 'render')
+      for (const file of await readdir(render, {withFileTypes: true})) if (file.isFile() && /\.(pptx|pptd|pdf)$/iu.test(file.name)) artifacts.push(`render/${file.name}`)
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    signal.throwIfAborted()
+    const result: ProjectOverview = {artifacts}
+    const warnings: string[] = []
+    if (artifacts.includes('jc.md')) try {
+      const confirmations = await summarizeProjectConfirmations(root)
+      result.confirmations = {figures: confirmations.figures.status, outline: confirmations.outline.status, slides: confirmations.slides.status}
+    } catch (error) { warnings.push(`确认记录不可用：${(error as Error).message}`) }
+    try { result.groupCount = (await readGroups(resolve(root, 'groups.json'))).groups.length }
+    catch (error) { warnings.push(`拼图清单不可用：${(error as Error).message}`) }
+    if (warnings.length) result.warning = warnings.join('；')
+    return result
+  }
 
   @Remote({ resources: { session: (sessionId) => sessionId as SessionId } })
   async compositionState(sessionId: string, project: string, signal: AbortSignal): Promise<CompositionState> {

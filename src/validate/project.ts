@@ -4,7 +4,7 @@ import { figuresJsonIssues, loadFiguresJson, type FiguresJson, type Panel } from
 import { sha256Hex } from '../files.ts'
 import { digestMembers, readGroups, sameDigest, type GroupsFile } from '../groups.ts'
 import { isInsideDirectory } from '../paths.ts'
-import { normalizeAssetReference, parseDeck, projectPath, readTextIfExists, isSourceLineValid, panelMentionTokens } from './markdown.ts'
+import { normalizeAssetReference, parseSlides, projectPath, readTextIfExists, isSourceLineValid, panelMentionTokens } from './markdown.ts'
 
 export interface ValidationIssue {
   code: string
@@ -33,11 +33,12 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-/** 与 compose_panels 登记时相同的成员指纹；成员缺失时以 missing 占位，必然不匹配。figures.json 的 asset 已由 schema 限定在 figures/ 内。 */
+/** 与 compose_panels 同源的成员指纹；无效/越界成员按 missing 处理。 */
 async function digestAssets(projectDir: string, panelIds: string[], panels: Map<string, Panel>): Promise<string> {
   const members = await Promise.all(panelIds.map(async id => {
     const panel = panels.get(id)
     if (!panel?.asset) return { id }
+    if (!isInsideDirectory(projectPath(projectDir, panel.asset), resolve(projectDir, 'figures'))) return { id }
     const bytes = await readFile(projectPath(projectDir, panel.asset)).catch(() => undefined)
     return { id, digest: bytes === undefined ? undefined : sha256Hex(bytes) }
   }))
@@ -86,27 +87,27 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
     errors.push(issue('GROUPS_INVALID', (error as Error).message, { path: 'groups.json' }))
   }
 
-  const deckText = await readTextIfExists(projectPath(absProject, 'deck.md'))
+  const slidesText = await readTextIfExists(projectPath(absProject, 'slides.md'))
   const outlineText = await readTextIfExists(projectPath(absProject, 'outline.md'))
-  if (deckText === undefined) errors.push(issue('DECK_MISSING', '缺少 deck.md', { path: 'deck.md' }))
-  const deck = deckText === undefined ? undefined : parseDeck(deckText)
+  if (slidesText === undefined) errors.push(issue('SLIDES_MISSING', '缺少 slides.md', { path: 'slides.md' }))
+  const slides = slidesText === undefined ? undefined : parseSlides(slidesText)
   const currentRevision = figures?.revision
-  if (deck) {
-    const declaredRevision = Number(deck.frontmatter.figures_revision)
-    if (Number.isInteger(declaredRevision) && currentRevision !== undefined && declaredRevision !== currentRevision) warnings.push(issue('FIGURES_REVISION_STALE', `deck 使用旧 figures revision：${declaredRevision}，当前为 ${currentRevision}`, { path: 'deck.md' }))
+  if (slides) {
+    const declaredRevision = Number(slides.frontmatter.figures_revision)
+    if (Number.isInteger(declaredRevision) && currentRevision !== undefined && declaredRevision !== currentRevision) warnings.push(issue('FIGURES_REVISION_STALE', `slides 使用旧 figures revision：${declaredRevision}，当前为 ${currentRevision}`, { path: 'slides.md' }))
     const referencedPanels = new Set<string>()
     const groupDigestCache = new Map<string, Promise<string>>()
-    for (const page of deck.pages) {
-      if (page.declaredPage === undefined) errors.push(issue('PAGE_HEADER_MISSING', `第 ${page.index} 页缺少 page 注释`, { path: 'deck.md', page: page.index }))
-      else if (page.declaredPage !== page.index) errors.push(issue('PAGE_NUMBER_MISMATCH', `页号 ${page.declaredPage} 与顺序 ${page.index} 不一致`, { path: 'deck.md', page: page.index }))
-      if (!page.speech) errors.push(issue('SPEECH_MISSING', `第 ${page.index} 页缺少讲稿块`, { path: 'deck.md', page: page.index }))
+    for (const page of slides.pages) {
+      if (page.declaredPage === undefined) errors.push(issue('PAGE_HEADER_MISSING', `第 ${page.index} 页缺少 page 注释`, { path: 'slides.md', page: page.index }))
+      else if (page.declaredPage !== page.index) errors.push(issue('PAGE_NUMBER_MISMATCH', `页号 ${page.declaredPage} 与顺序 ${page.index} 不一致`, { path: 'slides.md', page: page.index }))
+      if (!page.speech) errors.push(issue('SPEECH_MISSING', `第 ${page.index} 页缺少讲稿块`, { path: 'slides.md', page: page.index }))
       for (const image of page.images) {
         const asset = normalizeAssetReference(image.path)
-        if (!image.sourceLine || !isSourceLineValid(image.sourceLine)) errors.push(issue('SOURCE_INVALID', `图片来源标注缺失或格式非法：${image.path}`, { path: 'deck.md', page: page.index }))
+        if (!image.sourceLine || !isSourceLineValid(image.sourceLine)) errors.push(issue('SOURCE_INVALID', `图片来源标注缺失或格式非法：${image.path}`, { path: 'slides.md', page: page.index }))
         if (asset.startsWith('groups/')) {
           const groupId = asset.slice('groups/'.length).replace(/\.png$/u, '')
           const group = groups?.groups.find(item => item.id === groupId)
-          if (!group) errors.push(issue('GROUP_MISSING', `引用的图组不存在：${groupId}`, { path: 'deck.md', page: page.index, group: groupId }))
+          if (!group) errors.push(issue('GROUP_MISSING', `引用的图组不存在：${groupId}`, { path: 'slides.md', page: page.index, group: groupId }))
           else {
             const groupAssetPath = projectPath(absProject, group.asset)
             if (!isInsideDirectory(groupAssetPath, absProject)) errors.push(issue('ASSET_PATH_ESCAPE', `图组路径超出项目目录：${group.asset}`, { path: 'groups.json', group: groupId }))
@@ -130,23 +131,23 @@ export async function validateProject(projectDir: string): Promise<ValidationRep
         } else if (asset.startsWith('figures/')) {
           const id = asset.slice('figures/'.length).replace(/\.png$/u, '')
           referencedPanels.add(id)
-          if (!panels.has(id)) errors.push(issue('PANEL_MISSING', `引用的 panel 不存在：${id}`, { path: 'deck.md', page: page.index, panel: id }))
-          else if (panelAssets.get(id) !== asset) errors.push(issue('PANEL_ASSET_IDENTITY', `引用的 panel asset 身份不一致：${asset}`, { path: 'deck.md', page: page.index, panel: id }))
-        } else errors.push(issue('ASSET_PATH_INVALID', `图片路径必须位于 figures/ 或 groups/：${image.path}`, { path: 'deck.md', page: page.index }))
+          if (!panels.has(id)) errors.push(issue('PANEL_MISSING', `引用的 panel 不存在：${id}`, { path: 'slides.md', page: page.index, panel: id }))
+          else if (panelAssets.get(id) !== asset) errors.push(issue('PANEL_ASSET_IDENTITY', `引用的 panel asset 身份不一致：${asset}`, { path: 'slides.md', page: page.index, panel: id }))
+        } else errors.push(issue('ASSET_PATH_INVALID', `图片路径必须位于 figures/ 或 groups/：${image.path}`, { path: 'slides.md', page: page.index }))
       }
       const speechMentions = normalizeMention(page.speech)
       const imageText = normalizeMention(page.images.map(image => image.alt).join(' '))
-      for (const mention of speechMentions) if (!imageText.has(mention)) warnings.push(issue('SPEECH_IMAGE_MISMATCH', `讲稿提及 ${mention}，但本页未明显放置对应图片`, { path: 'deck.md', page: page.index }))
+      for (const mention of speechMentions) if (!imageText.has(mention)) warnings.push(issue('SPEECH_IMAGE_MISMATCH', `讲稿提及 ${mention}，但本页未明显放置对应图片`, { path: 'slides.md', page: page.index }))
       for (const image of page.images) {
         if (image.alt) {
           const imageMentions = normalizeMention(image.alt)
           if (![...imageMentions].some(mention => speechMentions.has(mention))) {
-            warnings.push(issue('IMAGE_SPEECH_MISMATCH', `本页图片 ${image.alt} 未在讲稿中提及`, { path: 'deck.md', page: page.index }))
+            warnings.push(issue('IMAGE_SPEECH_MISMATCH', `本页图片 ${image.alt} 未在讲稿中提及`, { path: 'slides.md', page: page.index }))
           }
         }
       }
     }
-    for (const id of panels.keys()) if (!referencedPanels.has(id)) warnings.push(issue('PANEL_UNREFERENCED', `panel 未被 deck 引用：${id}`, { path: 'figures.json', panel: id }))
+    for (const id of panels.keys()) if (!referencedPanels.has(id)) warnings.push(issue('PANEL_UNREFERENCED', `panel 未被 slides 引用：${id}`, { path: 'figures.json', panel: id }))
   }
   if (outlineText !== undefined) {
     const outlineRevision = outlineText.match(/figures_revision\s*:\s*(\d+)/iu)?.[1]

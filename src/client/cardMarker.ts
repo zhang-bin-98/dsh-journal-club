@@ -1,6 +1,6 @@
 export interface CardMarker {
   readonly project: string
-  readonly stage: 'figures' | 'outline' | 'deck'
+  readonly stage: 'figures' | 'outline' | 'slides'
 }
 
 /** Display-only markers: fixed stages and a workspace-relative folder, never executable text. */
@@ -12,7 +12,7 @@ export function parseCardMarker(text: string): CardMarker | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return
     const record = value as Record<string, unknown>
     if (Object.keys(record).sort().join(',') !== 'project,stage') return
-    if (record.stage !== 'figures' && record.stage !== 'outline' && record.stage !== 'deck') return
+    if (record.stage !== 'figures' && record.stage !== 'outline' && record.stage !== 'slides') return
     if (typeof record.project !== 'string' || record.project.length > 512 || /[\u0000-\u001f\u007f:"<>|?*]/u.test(record.project)) return
     const project = record.project.replaceAll('\\', '/').replace(/\/$/u, '')
     if (project.startsWith('/') || project.split('/').some(part => part === '..' || part === '.')) return

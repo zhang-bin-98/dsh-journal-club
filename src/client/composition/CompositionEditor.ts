@@ -1,4 +1,4 @@
-import { MaterialBrowser } from './MaterialBrowser.ts'
+import { MaterialBrowser, AssetImage } from './MaterialBrowser.ts'
 import { GroupNavigator } from './GroupNavigator.ts'
 import { createElement as h, useEffect, useId, useRef, useState, type ReactElement, type PointerEvent as Pointer, type KeyboardEvent } from 'react'
 import { compositionBounds, editingBounds, fitComposition, imageRect, resizeImage, suggestGeometry, validateGeometry, type CompositionAsset, type CompositionGeometry, type CompositionSave, type CompositionState } from '../../layout/composition.ts'
@@ -6,6 +6,9 @@ import { DEFAULT_CANVAS } from '../../layout/figureGeometry.ts'
 import { styles } from '../styles.ts'
 
 interface Props {
+  initialGroup?: string
+  onGroupChange?(id: string): void
+  onDraftState?(state: {dirty: boolean; busy: boolean}): void
   revision?: number
   load(): Promise<CompositionState>
   save(request: Omit<CompositionSave, 'project'>): Promise<{ digest: string; asset: string }>
@@ -28,7 +31,7 @@ function newId(ids: readonly string[]): string {
 export function CompositionEditor(props: Props): ReactElement {
   const [state, setState] = useState<CompositionState>()
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
-  const [current, setCurrent] = useState('')
+  const [current, setCurrent] = useState(props.initialGroup ?? '')
   const [selected, setSelected] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -52,6 +55,9 @@ export function CompositionEditor(props: Props): ReactElement {
   const gesture = useRef<{ startX: number; startY: number; scale: number; original: CompositionGeometry; next: CompositionGeometry; member: string; corner?: string; view: ReturnType<typeof editingBounds> }>()
   const draft = drafts[current], geometry = live ?? (draft ? value(draft) : empty())
   const dirty = Boolean(draft && serialized(value(draft)) !== draft.saved)
+  const anyDirty = Object.values(drafts).some(d => serialized(value(d)) !== d.saved)
+  useEffect(() => { props.onDraftState?.({dirty: anyDirty, busy}) }, [anyDirty, busy, props.onDraftState])
+  useEffect(() => { if (current) props.onGroupChange?.(current) }, [current, props.onGroupChange])
 
   function loadDraft(id: string, data: CompositionState): Draft {
     const group = data.groups.find(g => g.id === id)
@@ -60,8 +66,7 @@ export function CompositionEditor(props: Props): ReactElement {
       if (group.layout && typeof group.layout === 'object' && 'geometry' in group.layout) g = validateGeometry(group.layout.geometry, group.members)
       else g = suggestGeometry(group.members.map(member => {
         const asset = data.assets.find(a => a.id === member)
-        if (!asset) throw new Error(`图源不可读：${member}`)
-        return asset
+        return asset ?? {id: member, width: 100, height: 100}
       }), DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
     }
     return { id, history: [g], index: 0, saved: serialized(g), base: data.digest, inputs: data.assets, local: !group }
@@ -118,7 +123,7 @@ export function CompositionEditor(props: Props): ReactElement {
         return
       }
       const retained = retainedDrafts(data)
-      const id = retained[current] ? current : orderedIds(data)[0] || (data.order === undefined ? newId(data.groups.map(g => g.id)) : '')
+      const id = retained[current] || orderedIds(data).includes(current) ? current : orderedIds(data)[0] || (data.order === undefined ? newId(data.groups.map(g => g.id)) : '')
       if (!id) {
         setState(data); setDrafts(retained); setCurrent(''); setSelected(undefined)
         setNotice('当前文稿没有可显示的拼图，可新建拼图。')
@@ -302,15 +307,15 @@ export function CompositionEditor(props: Props): ReactElement {
   const externalChange = Boolean(draft && state && draft.base !== state.digest)
   const content = h('div', { className: 'jc-compose', onKeyDown: keys },
     h('div', { className: styles.header },
-      h('strong', null, '自由拼图'),
       h('span', { className: styles.subtitle, 'aria-label': '当前拼图' }, current),
-      button('新建拼图', () => choose(newId([...(state?.groups.map(g => g.id) ?? []), ...Object.keys(drafts)])), !state),
-      button('建议排版', () => commit(suggestGeometry(geometry.cells.map(c => draft!.inputs.find(a => a.id === c.member)!), geometry.width, geometry.height)), !geometry.cells.length || missing.length > 0),
-      button('撤销', () => history(-1), !draft?.index), button('重做', () => history(1), !draft || draft.index >= draft.history.length - 1),
       h('button', { type: 'button', className: styles.action, onClick: () => void save(), disabled: busy || !geometry.cells.length || missing.length > 0 }, busy ? '处理中…' : '保存拼图'),
       button('加入对话', () => void save(true), !geometry.cells.length || missing.length > 0 || externalChange),
       button(expanded ? '收起编辑' : '放大编辑', () => setExpanded(v => !v)),
-      button(sidebar ? '收起素材与属性' : '展开素材与属性', () => setSidebar(v => !v))),
+      h('details', {className: styles.moreActions}, h('summary', null, '更多'), h('div', {className: styles.moreMenu},
+      button('新建拼图', () => choose(newId([...(state?.groups.map(g => g.id) ?? []), ...Object.keys(drafts)])), !state),
+      button('建议排版', () => commit(suggestGeometry(geometry.cells.map(c => draft!.inputs.find(a => a.id === c.member)!), geometry.width, geometry.height)), !geometry.cells.length || missing.length > 0),
+      button('撤销', () => history(-1), !draft?.index), button('重做', () => history(1), !draft || draft.index >= draft.history.length - 1),
+      button(sidebar ? '收起素材与属性' : '展开素材与属性', () => setSidebar(v => !v))))),
     error ? h('p', { role: 'alert', className: styles.error }, error) : null,
     h('div', { className: 'jc-composeStatus' },
       h('span', { role: 'status' }, notice || `${geometry.cells.length} 张图片 · ${dirty ? '有未保存修改' : '布局已载入'} · 拖动移动，拖角点等比缩放`),
@@ -318,7 +323,8 @@ export function CompositionEditor(props: Props): ReactElement {
       state?.groups.some(g => g.id === current) ? button('打开已保存拼图', () => props.openAsset?.(state.groups.find(g => g.id === current)!.asset)) : null),
     overlaps ? h('p', { className: 'jc-composeWarning' }, '图片存在重叠，请检查内容是否被遮挡；可从右栏列表选中图片，方向键微调。') : null,
     state?.groups.find(g => g.id === current)?.stale ? h('p', { className: 'jc-composeWarning' }, '图源已变化：当前预览使用最新图片并保留原布局，请检查后保存以更新组合图。') : null,
-    missing.length ? h('p', { role: 'alert' }, `图源缺失：${missing.map(c => c.member).join('、')}；草稿已保留。`) : null,
+    missing.length ? h('p', { role: 'alert', className: 'jc-composeWarning' }, `图源缺失：${missing.map(c => c.member).join('、')}；无法保存。请恢复原图片后刷新图源。`) : null,
+    missing.length && state?.groups.find(g => g.id === current) ? h('div', {className: 'jc-composeMissingPreview', 'aria-label': '已保存拼图预览'}, h(AssetImage, {asset: {asset: state.groups.find(g => g.id === current)!.asset, digest: state.digest, label: `${current} · 已保存版本`}, readAsset: props.readAsset, lazy: false})) : null,
     externalChange ? h('div', { className: 'jc-composeWarning', role: 'alert' }, '拼图文件有外部修改；刷新图源不会覆盖当前草稿，也不会解除保存冲突。', button('重新加载布局（放弃当前草稿）', () => void reload())) : null,
     h('div', { className: `jc-composeBody ${sidebar ? '' : 'jc-composeBodySolo'}` },
       h(GroupNavigator, { items: groupIds.map(id => {
@@ -331,7 +337,7 @@ export function CompositionEditor(props: Props): ReactElement {
           h('span', null, `导出 ${Math.ceil(outputBounds.width * 2)} × ${Math.ceil(outputBounds.height * 2)} px`)),
         h('div', { ref: viewport, className: 'jc-composeViewport' }, h('div', { className: 'jc-composeBoardWrap', style: { width: displayWidth } },
           h('svg', { ref: svg, className: 'jc-composeBoard', tabIndex: 0, role: 'group', 'aria-label': '自由拼图画布', viewBox: `${viewBounds.x} ${viewBounds.y} ${viewBounds.width} ${viewBounds.height}`, style: { height: displayWidth * viewBounds.height / viewBounds.width, overflow: 'visible' }, onPointerDown: () => setSelected(undefined), onPointerMove: move, onPointerUp: () => end(), onPointerCancel: () => end(true), onLostPointerCapture: () => { if (gesture.current) end(true) } },
-            h('rect', { ...outputBounds, fill: 'white', stroke: '#cbd5e1', strokeDasharray: '4 4', vectorEffect: 'non-scaling-stroke', 'aria-label': '按图片外缘导出范围' }),
+            h('rect', { ...outputBounds, className: 'jc-composeExport', vectorEffect: 'non-scaling-stroke', 'aria-label': '按图片外缘导出范围' }),
             ...geometry.cells.map(c => {
               const asset = draft?.inputs.find(a => a.id === c.member), rect = imageRect(c, asset ?? c, 2)
               const r = { x: rect.x / 2, y: rect.y / 2, width: rect.width / 2, height: rect.height / 2 }
@@ -342,8 +348,8 @@ export function CompositionEditor(props: Props): ReactElement {
               const asset = draft?.inputs.find(a => a.id === selected), rect = imageRect(selectedCell, asset ?? selectedCell, 2)
               const r = { x: rect.x / 2, y: rect.y / 2, width: rect.width / 2, height: rect.height / 2 }
               return h('g', { className: 'jc-composeSelection' },
-                h('rect', { ...r, fill: 'none', stroke: '#2563eb', strokeWidth: 2, vectorEffect: 'non-scaling-stroke', pointerEvents: 'none' }),
-                ...['nw', 'ne', 'sw', 'se'].map(corner => h('circle', { key: corner, 'data-corner': corner, cx: r.x + (corner.includes('e') ? r.width : 0), cy: r.y + (corner.includes('s') ? r.height : 0), r: handleSize / 2, fill: 'white', stroke: '#2563eb', vectorEffect: 'non-scaling-stroke', style: { cursor: `${corner}-resize` }, onPointerDown: (e: Pointer<SVGCircleElement>) => begin(e, selectedCell.member, corner) })))
+                h('rect', { ...r, fill: 'none', stroke: 'var(--jc-accent)', strokeWidth: 2, vectorEffect: 'non-scaling-stroke', pointerEvents: 'none' }),
+                ...['nw', 'ne', 'sw', 'se'].map(corner => h('circle', { key: corner, 'data-corner': corner, cx: r.x + (corner.includes('e') ? r.width : 0), cy: r.y + (corner.includes('s') ? r.height : 0), r: handleSize / 2, fill: 'white', stroke: 'var(--jc-accent)', vectorEffect: 'non-scaling-stroke', style: { cursor: `${corner}-resize` }, onPointerDown: (e: Pointer<SVGCircleElement>) => begin(e, selectedCell.member, corner) })))
             })() : null)))),
       h('aside', { className: 'jc-composeInspector', hidden: !sidebar },
         h('div', { role: 'tablist', 'aria-label': '素材与属性', className: 'jc-composeInspectorTabs' },

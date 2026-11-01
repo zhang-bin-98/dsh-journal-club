@@ -17,13 +17,13 @@ updated: 2026-10-29
 # 项目备注
 ```
 
-stage 仅为缓存：analysis / figure-review / outline / deck / render / done。用户明确确认后才添加记录：
+stage 仅为缓存：analysis / figure-review / outline / slides / render / done。用户明确确认后才添加记录：
 
 ```yaml
 confirmations:
   figures: { revision: 3, at: 2026-10-29T14:00:00+08:00 }
   outline: { digest: "sha256:<文件字节的 SHA-256 小写十六进制>", at: 2026-10-29T14:00:00+08:00 }
-  deck: { digest: "sha256:<deck 文件摘要>", groups_digest: "sha256:<groups 文件摘要>", at: 2026-10-29T14:00:00+08:00 }
+  slides: { digest: "sha256:<slides 文件摘要>", groups_digest: "sha256:<groups 文件摘要>", at: 2026-10-29T14:00:00+08:00 }
 ```
 
 以上摘要占位符必须替换为真实 64 位值，不能直接保存。更新时保留 requirements 和自由备注。可通过随插件导出的 `dsh-journal-club/project` 模块调用 createJcFile/readJcFile/updateJcFile/digestFile/summarizeProjectConfirmations；运行位置需能解析已安装的插件模块。不能解析时使用宿主文件工具维护同一格式，摘要使用 Node `createHash('sha256').update(await readFile(path)).digest('hex')` 并加 `sha256:` 前缀，不凭记忆计算。始终读取原始字节，不先转换 CRLF/LF、去 BOM 或修剪空白；Python 应用 `read_bytes()`，不要对 `read_text()` 的换行归一化结果计算确认摘要。
@@ -71,7 +71,7 @@ Panel ID 全局唯一、删除后不复用；不以图号重命名现有 ID。wh
 {"version":1,"groups":[]}
 ```
 
-需要组合图时调用 `compose_panels`：默认修改现有拼图，output 必须沿用 groups.json 的原 asset 路径，保留原 ID/文件名；只有明确新建或另存时传 create:true，新建不能覆盖已有文件。例如首次新建时 create:true， assets 为项目中已有 panel PNG 路径，output 为 `<项目>/groups/fig1_AB.png`，layout_hint 为 grid/rows/1+2。首次拼图尽量沿用原 Figure 的布局：参考原始页图和 Panel 框，保留左右/上下关系、行列分组、相对大小与阅读顺序；必要时用 geometry 明确排布，不默认改成统一网格。只选部分 Panel 时可收紧空隙，跨 Figure 时尽量保留各图内部关系。用户明确要求与已有手动布局优先，不自动改回原图；确因可读性或叙事需要调整时简要说明。也可传 geometry（width、height、cells；每个 cell 含 member/x/y/width/height）自由定位；width/height 为参考尺寸，不作固定裁切边界，导出尺寸由等比适配后实际图片的外接矩形决定。去掉外围空白，保留内部间隔、相对位置和原图内容；拼图不是整页 PPT。比例与图片数量无固定上限。scale 控制输出倍率，省略为 2，与工作台保存一致。工具登记成员、输入摘要与几何；不要手写伪造这些计算结果。用户可在 JC「自由拼图」页面手调，保存后保留原文件名；重新渲染已有人工布局时，读取并复用 geometry，除非用户要求重新排版。deck 使用 `groups/<id>.png`，引用图组时仍标明所有来源图号和页码。
+需要组合图时调用 `compose_panels`：默认修改现有拼图，output 必须沿用 groups.json 的原 asset 路径，保留原 ID/文件名；只有明确新建或另存时传 create:true，新建不能覆盖已有文件。例如首次新建时 create:true， assets 为项目中已有 panel PNG 路径，output 为 `<项目>/groups/fig1_AB.png`，layout_hint 为 grid/rows/1+2。首次拼图尽量沿用原 Figure 的布局：参考原始页图和 Panel 框，保留左右/上下关系、行列分组、相对大小与阅读顺序；必要时用 geometry 明确排布，不默认改成统一网格。只选部分 Panel 时可收紧空隙，跨 Figure 时尽量保留各图内部关系。用户明确要求与已有手动布局优先，不自动改回原图；确因可读性或叙事需要调整时简要说明。也可传 geometry（width、height、cells；每个 cell 含 member/x/y/width/height）自由定位；width/height 为参考尺寸，不作固定裁切边界，导出尺寸由等比适配后实际图片的外接矩形决定。去掉外围空白，保留内部间隔、相对位置和原图内容；拼图不是整页 PPT。比例与图片数量无固定上限。scale 控制输出倍率，省略为 2，与工作台保存一致。工具登记成员、输入摘要与几何；不要手写伪造这些计算结果。用户可在 JC「自由拼图」页面手调，保存后保留原文件名；重新渲染已有人工布局时，读取并复用 geometry，除非用户要求重新排版。slides 使用 `groups/<id>.png`，引用图组时仍标明所有来源图号和页码。
 
 ## parse/manifest.json
 
@@ -104,7 +104,7 @@ figures_revision: 3
 扩展对照、完整方法及其他发现，保留其来源；没有补充内容时可省略。
 ```
 
-## deck.md
+## slides.md
 
 最小合法的一页示例（生成时 figures_revision 使用当前确认的版本）：
 
@@ -130,4 +130,4 @@ generated: 2026-10-29
 
 新增页面用独立一行 `---` 分隔，页号必须从 1 连续递增。layout 可省略，支持 title/text/figure-full/figure-text/two-figures/panel-grid。每张图后紧跟来源行，不夹空行；讲稿块每页必须有，包括标题页。来源形式为 `> 来源：Figure 3B · p.12`，可加 `· 补充材料`。补充图保留 S 编号，例如 `> 来源：Supplementary Figure S9 · p.27 · 补充材料`，或 `Figure S9`；不为通过校验删图或改成正文图号。正文及讲稿保留疑点 `⚠️`；不把疑点标记当成证据。
 
-运行 `validate` 检查项目并修复 errors；warnings 逐项核对，合理弃图说明原因。outline/deck 引用稳定图片路径；重裁或重拼后复核图像、revision 和 digest，不能仅改确认记录让旧内容看起来有效。
+运行 `validate` 检查项目并修复 errors；warnings 逐项核对，合理弃图说明原因。outline/slides 引用稳定图片路径；重裁或重拼后复核图像、revision 和 digest，不能仅改确认记录让旧内容看起来有效。

@@ -17,7 +17,7 @@ export function registerValidate(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'validate',
-      description: '校验项目目录中的 figures.json、groups.json、deck.md、outline.md 一致性，返回可判定 errors 与 warnings。',
+      description: '校验项目目录中的 figures.json、groups.json、slides.md、outline.md 一致性，返回可判定 errors 与 warnings。',
       parameters: {
         project_dir: {
           type: 'string',

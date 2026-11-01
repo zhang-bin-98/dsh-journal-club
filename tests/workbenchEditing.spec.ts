@@ -71,7 +71,12 @@ async function mount(options: {region?: [number, number, number, number]; flags?
       })) })
     })
   }
-  return { store, button, input, externalLabel, updateFigures, cropPanels, loadPage, release }
+  const externalInsert = () => {
+    const current = snapshot.figures!, other = structuredClone(current.figures[0]!)
+    other.id = 'other'; other.label = 'Figure 0'; other.panels[0]!.id = 'other_a'
+    publish({...current, revision: current.revision + 1, figures: [other, ...current.figures]})
+  }
+  return { store, button, input, externalLabel, externalInsert, updateFigures, cropPanels, loadPage, release }
 }
 
 describe('工作台编辑期间的文件变更', () => {
@@ -417,4 +422,18 @@ it('新建标签只自动聚焦一次，删除后恢复同 ID 不恢复旧选中
     await m.store.updateFigures({figures_json:'figures.json', base_rev:m.store.getSnapshot().figures!.revision, patch:[{op:'add',path:'/figures/0/panels/-',value:saved}]})
   })
   expect(view.root.findAllByProps({'aria-label':'Panel 标签'})).toHaveLength(0)
+})
+
+it('排队标记已查看不能命中外部新插入的 Figure', async () => {
+  const m = await mount({deferWrites: true})
+  act(() => { m.button('A').props.onClick() })
+  act(() => { m.input().props.onFocus(); m.input().props.onChange({target: {value: 'A2'}}) })
+  await act(async () => {
+    void m.input().props.onBlur()
+    m.button('标记已查看').props.onClick()
+  })
+  act(() => { m.externalInsert() })
+  await m.release()
+  await m.release()
+  expect(m.store.getSnapshot().figures!.figures.find(f => f.id === 'other')!.status).toBe('pending')
 })

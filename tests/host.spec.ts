@@ -1,4 +1,5 @@
 import sharp from 'sharp'
+import {createJcMarkdown, digestText} from '../src/project/jcState.ts'
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -165,18 +166,18 @@ it('自由拼图 Remote 载入真实图源、保存与恢复几何，拒绝过�
   expect((await service.compositionState('active','paper',signal())).groups[0]!.stale).toBe(false)
   await expect(service.saveComposition('active',{...request,id:'../../escape'},signal())).rejects.toThrow()
   await expect(service.compositionState('active','../../outside',signal())).rejects.toThrow()
-  // Deck order is derived on read, independently of manifest insertion order.
+  // Slides order is derived on read, independently of manifest insertion order.
   const manifest=JSON.parse(await readFile(join(root,'groups.json'),'utf8'))
   for (const id of ['second','unused']) {
     await copyFile(join(root,saved.asset),join(root,`groups/${id}.png`))
     manifest.groups.push({...manifest.groups[0],id,asset:`groups/${id}.png`})
   }
   await writeFile(join(root,'groups.json'),JSON.stringify(manifest))
-  await writeFile(join(root,'deck.md'),'![2](./groups/second.png)\n\n---\n\n![1](groups/free.png)\n![again](groups/second.png)')
+  await writeFile(join(root,'slides.md'),'![2](./groups/second.png)\n\n---\n\n![1](groups/free.png)\n![again](groups/second.png)')
   const ordered=await service.compositionState('active','paper',signal())
   expect(ordered.order).toEqual(['second','free'])
   expect(ordered.groups.map(g=>g.id)).toEqual(['free','second','unused'])
-  await writeFile(join(root,'deck.md'),'![1](groups/free.png)')
+  await writeFile(join(root,'slides.md'),'![1](groups/free.png)')
   expect((await service.compositionState('active','paper',signal())).order).toEqual(['free'])
   await rm(join(root,'groups/free.png'))
   const deleted=await service.compositionState('active','paper',signal())
@@ -191,4 +192,51 @@ it('自由拼图 Remote 载入真实图源、保存与恢复几何，拒绝过�
   expect(preserved.asset).toBe('groups/second.png')
   expect((await service.compositionState('active','paper',signal())).groups.find(g=>g.id==='stable')?.asset).toBe('groups/second.png')
   await expect(service.saveComposition('active',{...update,id:'unexpected-copy',base_digest:preserved.digest},signal())).rejects.toThrow('只有新建')
+})
+
+it('局部拼图不依赖 figures.json/jc.md，恢复成员后可原位保存，缺图不可覆盖', async () => {
+  const root = join(workspace,'paper')
+  await mkdir(join(root,'figures')); await mkdir(join(root,'groups'))
+  const png = await sharp({create:{width:100,height:60,channels:4,background:'blue'}}).png().toBuffer()
+  await writeFile(join(root,'figures/a.png'),png); await writeFile(join(root,'groups/g.png'),png)
+  await writeFile(join(root,'groups.json'),JSON.stringify({version:1,groups:[{id:'g',asset:'groups/g.png',members:['a'],inputs_digest:'sha256:old',layout:{kind:'manual',geometry:{width:100,height:60,cells:[{member:'a',x:0,y:0,width:100,height:60}]}}}]}))
+  const initial = await service.compositionState('active','paper',signal())
+  expect(initial.assets).toHaveLength(1)
+  expect(initial.assets[0]).toMatchObject({id:'a',label:'a',width:100,height:60})
+  const request = {project:'paper',id:'g',base_digest:initial.digest,inputs:initial.assets.map(a=>({id:a.id,digest:a.digest})),geometry:initial.groups[0]!.layout!.geometry}
+  await service.saveComposition('active',request,signal())
+  expect(await readdir(root)).not.toContain('figures.json')
+  const overview = await service.projectOverview('active','paper',signal())
+  expect(overview.groupCount).toBe(1)
+  expect(overview.confirmations).toBeUndefined()
+  const before = await readFile(join(root,'groups/g.png'))
+  await rm(join(root,'figures/a.png'))
+  const missing = await service.compositionState('active','paper',signal())
+  expect(missing.assets).toHaveLength(0); expect(missing.warnings[0]).toContain('a')
+  await expect(service.saveComposition('active',{...request,base_digest:missing.digest},signal())).rejects.toThrow()
+  expect(await readFile(join(root,'groups/g.png'))).toEqual(before)
+})
+
+it('概览复用真实确认摘要；文件变更后变为待复核，渲染产物只报告存在', async () => {
+  const root=join(workspace,'paper'), outline='outline', slides='slides', groups=JSON.stringify({version:1,groups:[]})
+  await writeFile(join(root,'figures.json'),JSON.stringify(figures()))
+  await writeFile(join(root,'outline.md'),outline); await writeFile(join(root,'slides.md'),slides); await writeFile(join(root,'groups.json'),groups)
+  await mkdir(join(root,'render')); await writeFile(join(root,'render/slides.pptx'),'fixture')
+  await writeFile(join(root,'jc.md'),createJcMarkdown({title:'Overview',main_paper:'main.pdf',confirmations:{figures:{revision:0,at:'now'},outline:{digest:digestText(outline),at:'now'},slides:{digest:digestText(slides),groups_digest:digestText(groups),at:'now'}}}))
+  const initial=await service.projectOverview('active','paper',signal())
+  expect(initial.confirmations).toEqual({figures:'confirmed',outline:'confirmed',slides:'confirmed'})
+  expect(initial.artifacts).toContain('render/slides.pptx')
+  await writeFile(join(root,'slides.md'),'changed')
+  expect((await service.projectOverview('active','paper',signal())).confirmations!.slides).toBe('stale')
+  await expect(service.projectOverview('active','..',signal())).rejects.toThrow('路径超出')
+})
+
+it('确认记录损坏不隐藏已存在的文件，也不宣称任何阶段已确认', async () => {
+  const root=join(workspace,'paper')
+  await writeFile(join(root,'jc.md'),'invalid frontmatter')
+  await writeFile(join(root,'slides.md'),'content')
+  const status=await service.projectOverview('active','paper',signal())
+  expect(status.artifacts).toContain('slides.md')
+  expect(status.confirmations).toBeUndefined()
+  expect(status.warning).toContain('确认记录不可用')
 })

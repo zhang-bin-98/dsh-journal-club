@@ -172,7 +172,7 @@ it('文稿引用顺序改变即重排，移除的图组不被手动草稿复活�
   expect(nav().current).toBe('two');expect(ids()).toEqual(['two','one'])
   await act(async()=>{button('Figure 1 · b').props.onClick()})
   await act(async()=>{view.root.findByProps({className:'jc-compose'}).props.onKeyDown({key:'ArrowRight',target:{closest:()=>null},preventDefault:()=>{}})})
-  state.order=['one'] // Only deck changed; groups digest is identical.
+  state.order=['one'] // Only slides changed; groups digest is identical.
   await act(async()=>{view.update(h(CompositionEditor,{...props,revision:1}))})
   expect(ids()).toEqual(['one']);expect(nav().current).toBe('one')
   state.order=['two','one']

@@ -17,10 +17,10 @@ interface CardHost {
   readonly sessions: SessionScopes
   readonly sidebarRight: {
     openResource(address: string): unknown
-    openTab(kind: string, options?: { params: { project: string } }): unknown
+    openTab(kind: string, options?: { params: { project: string; view?: string } }): unknown
   }
 }
-const LABELS = { figures: '图源核对', outline: '叙事大纲', deck: '幻灯片内容' } as const
+const LABELS = { figures: '图源核对', outline: '叙事大纲', slides: '幻灯片内容' } as const
 
 /** The model contributes a display marker; only explicit button clicks send fixed user actions. */
 export function registerCards(ctx: Context): void {
@@ -99,8 +99,8 @@ function ConfirmationCard({ node, sessionId, host }: CardProps & { readonly host
     h('div', { className: styles.inlineActions },
       h('button', {type: 'button', className: styles.secondaryAction, onClick: () => setRefresh(value => value + 1)}, '刷新摘要'),
       h('button', { type: 'button', className: styles.secondaryAction, disabled: sending, onClick: () => void run(() => marker.stage === 'figures'
-        ? host.sidebarRight.openTab('journal-club', { params: { project: marker.project } })
+        ? host.sidebarRight.openTab('journal-club', { params: { project: marker.project, view: 'figures' } })
         : host.sidebarRight.openResource(fileResourceAddress(sessionId, path))) }, marker.stage === 'figures' ? '打开核对工作台' : `预览 ${filename}`),
-      h('button', { type: 'button', className: styles.action, disabled: sending, onClick: () => void run(() => sendSessionMessage(host.sessions, sessionId, cardConfirmation(marker))) }, marker.stage === 'deck' ? '确认内容，渲染 PPTX' : '确认并继续')),
+      h('button', { type: 'button', className: styles.action, disabled: sending, onClick: () => void run(() => sendSessionMessage(host.sessions, sessionId, cardConfirmation(marker))) }, marker.stage === 'slides' ? '确认内容，渲染 PPTX' : '确认并继续')),
     error ? h('p', { className: styles.error, role: 'alert' }, error) : null)
 }

@@ -128,7 +128,7 @@ describe('compose_panels 工具', () => {
       documents: [{ id: 'main', path: 'main.pdf', role: 'main', pages: 1 }],
       figures: [{ id: 'fig1', regions: [{ document: 'main', page: 1, bbox: [0, 0, 600, 800] }], panels: [panel('panel-a', [0, 0, 100, 100]), panel('panel-b', [100, 100, 200, 200])] }],
     }))
-    await writeFile(join(work, 'paper', 'deck.md'), '<!-- page 1 -->\n\n![Figure 1A](groups/fig1_AB.png)\n> 来源：Figure 1A · p.1\n\n> 🗣 **讲稿**：Figure 1A。\n')
+    await writeFile(join(work, 'paper', 'slides.md'), '<!-- page 1 -->\n\n![Figure 1A](groups/fig1_AB.png)\n> 来源：Figure 1A · p.1\n\n> 🗣 **讲稿**：Figure 1A。\n')
     const report = await validateProject(join(work, 'paper'))
     expect(report.errors).toEqual([])
     expect(report.warnings.map(item => item.code)).not.toContain('GROUP_DIGEST_STALE')

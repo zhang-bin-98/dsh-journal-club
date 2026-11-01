@@ -5,8 +5,8 @@ const text = '<!-- jc-card {"project":"联合治疗","stage":"figures"} -->'
 describe('Journal Club 卡片契约', () => {
   it('只接受一个固定阶段和相对项目目录的展示标记', () => {
     expect(parseCardMarker(text)).toEqual({ project: '联合治疗', stage: 'figures' })
-    expect(parseCardMarker('正文\n<!-- jc-card {"project":"","stage":"deck"} -->')).toEqual({ project: '', stage: 'deck' })
-    for (const value of [text + text, '<!-- jc-card nope -->', '<!-- jc-card {"project":"../secret","stage":"deck"} -->', '<!-- jc-card {"project":"C:/secret","stage":"deck"} -->', '<!-- jc-card {"project":"/secret","stage":"deck"} -->', '<!-- jc-card {"project":"p","stage":"run"} -->', '<!-- jc-card {"project":"p","stage":"deck","command":"delete"} -->']) expect(parseCardMarker(value)).toBeUndefined()
+    expect(parseCardMarker('正文\n<!-- jc-card {"project":"","stage":"slides"} -->')).toEqual({ project: '', stage: 'slides' })
+    for (const value of [text + text, '<!-- jc-card nope -->', '<!-- jc-card {"project":"../secret","stage":"slides"} -->', '<!-- jc-card {"project":"C:/secret","stage":"slides"} -->', '<!-- jc-card {"project":"/secret","stage":"slides"} -->', '<!-- jc-card {"project":"p","stage":"run"} -->', '<!-- jc-card {"project":"p","stage":"slides","command":"delete"} -->']) expect(parseCardMarker(value)).toBeUndefined()
   })
   it('只把落定 assistant 文本变为追加卡片，不认领原消息', () => {
     const event = { type: 'assistant/message', seq: 18, surfaceOp: 'append', data: { message: { content: [{ type: 'text', text }] } } }
@@ -37,8 +37,8 @@ describe('Journal Club 卡片契约', () => {
     expect(cardConfirmation({ project: 'paper one', stage: 'outline' })).toBe('/jc confirm outline\n项目目录："paper one"')
   })
   it('文件 URI 编码路径片段并保留绝对路径/盘符语义', () => {
-    expect(fileResourceAddress('s/1', 'paper one/deck.md')).toBe('dsh-resource://file/session/s%2F1/paper%20one/deck.md')
-    expect(fileResourceAddress('s', 'C:\\paper\\deck.md')).toBe('dsh-resource://file/session/s/C:/paper/deck.md')
-    expect(fileResourceAddress('s', '/tmp/deck.md')).toBe('dsh-resource://file/session/s//tmp/deck.md')
+    expect(fileResourceAddress('s/1', 'paper one/slides.md')).toBe('dsh-resource://file/session/s%2F1/paper%20one/slides.md')
+    expect(fileResourceAddress('s', 'C:\\paper\\slides.md')).toBe('dsh-resource://file/session/s/C:/paper/slides.md')
+    expect(fileResourceAddress('s', '/tmp/slides.md')).toBe('dsh-resource://file/session/s//tmp/slides.md')
   })
 })

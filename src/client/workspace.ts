@@ -35,18 +35,23 @@ export function workspaceFiles(remote: WorkspaceRemote): WorkspaceFilesPort {
   }
 }
 
-export interface ProjectEntry { path: string; title: string }
+export interface ProjectEntry { path: string; title: string; artifacts: string[] }
 export async function discoverProjects(remote: WorkspaceRemote, sessionId: string, signal: AbortSignal): Promise<ProjectEntry[]> {
   const list = unwrap(await remote.list(sessionId, '.', signal))
   if (list.truncated) throw new Error('工作目录条目超过宿主列表上限，请进入论文目录后打开 JC。')
-  const paths = list.entries.some(e => e.type === 'file' && e.name === 'jc.md') ? [''] : []
+  const projects: ProjectEntry[] = []
+  const add = (path: string, entries: {name: string; type: string}[]) => {
+    const artifacts = entries.filter(e => e.type === 'file').map(e => e.name)
+    if (['jc.md', 'figures.json', 'groups.json'].some(name => artifacts.includes(name))) projects.push({path, title: path || '当前工作目录', artifacts})
+  }
+  add('', list.entries)
   const directories = list.entries.filter(e => e.type === 'directory' && !e.name.startsWith('.'))
   // Bounded batches avoid opening a request for every folder at once.
   for (let index = 0; index < directories.length; index += 8) {
     await Promise.all(directories.slice(index, index + 8).map(async entry => {
       const result = await remote.list(sessionId, entry.name, signal)
-      if (result.ok && result.value.entries.some(e => e.type === 'file' && e.name === 'jc.md')) paths.push(entry.name)
+      if (result.ok) add(entry.name, result.value.entries)
     }))
   }
-  return paths.sort().map(path => ({ path, title: path || '当前工作目录' }))
+  return projects.sort((a, b) => a.path.localeCompare(b.path))
 }

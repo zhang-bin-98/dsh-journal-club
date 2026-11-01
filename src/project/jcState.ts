@@ -3,10 +3,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { atomicWriteFile } from '../files.ts'
 
-export const JC_STAGES = ['analysis', 'figure-review', 'outline', 'deck', 'render', 'done'] as const
+export const JC_STAGES = ['analysis', 'figure-review', 'outline', 'slides', 'render', 'done'] as const
 export type JcStage = (typeof JC_STAGES)[number]
 
-export const CONFIRMATION_KINDS = ['figures', 'outline', 'deck'] as const
+export const CONFIRMATION_KINDS = ['figures', 'outline', 'slides'] as const
 export type ConfirmationKind = (typeof CONFIRMATION_KINDS)[number]
 
 export interface FiguresConfirmation {
@@ -19,7 +19,7 @@ export interface OutlineConfirmation {
   at: string
 }
 
-export interface DeckConfirmation {
+export interface SlidesConfirmation {
   digest: string
   groups_digest: string
   at: string
@@ -28,7 +28,7 @@ export interface DeckConfirmation {
 export interface JcConfirmations {
   figures?: FiguresConfirmation
   outline?: OutlineConfirmation
-  deck?: DeckConfirmation
+  slides?: SlidesConfirmation
 }
 
 export interface JcState {
@@ -70,7 +70,7 @@ export interface JcStateUpdate {
 export interface CurrentConfirmationSummary {
   figures?: { revision: number }
   outline?: { digest: string }
-  deck?: { digest: string; groups_digest: string }
+  slides?: { digest: string; groups_digest: string }
 }
 
 export type ConfirmationStatus = 'confirmed' | 'stale' | 'missing'
@@ -79,7 +79,7 @@ export interface ConfirmationCheck {
   kind: ConfirmationKind
   status: ConfirmationStatus
   valid: boolean
-  recorded?: FiguresConfirmation | OutlineConfirmation | DeckConfirmation
+  recorded?: FiguresConfirmation | OutlineConfirmation | SlidesConfirmation
   current?: CurrentConfirmationSummary[ConfirmationKind]
 }
 
@@ -122,7 +122,7 @@ function cloneConfirmations(confirmations: JcConfirmations = {}): JcConfirmation
   return {
     ...(confirmations.figures === undefined ? {} : { figures: { ...confirmations.figures } }),
     ...(confirmations.outline === undefined ? {} : { outline: { ...confirmations.outline } }),
-    ...(confirmations.deck === undefined ? {} : { deck: { ...confirmations.deck } }),
+    ...(confirmations.slides === undefined ? {} : { slides: { ...confirmations.slides } }),
   }
 }
 
@@ -138,7 +138,7 @@ function validateConfirmation(kind: ConfirmationKind, value: unknown): Confirmat
   }
   assertDigest(record.digest, `confirmations.${kind}.digest`)
   if (kind === 'outline') return { digest: record.digest, at: record.at }
-  assertDigest(record.groups_digest, 'confirmations.deck.groups_digest')
+  assertDigest(record.groups_digest, 'confirmations.slides.groups_digest')
   return { digest: record.digest, groups_digest: record.groups_digest, at: record.at }
 }
 
@@ -157,7 +157,7 @@ function validateConfirmations(value: unknown): JcConfirmations {
       const confirmation = validateConfirmation(kind, record[kind])
       if (kind === 'figures') result.figures = confirmation as FiguresConfirmation
       else if (kind === 'outline') result.outline = confirmation as OutlineConfirmation
-      else result.deck = confirmation as DeckConfirmation
+      else result.slides = confirmation as SlidesConfirmation
     }
   }
   return result
@@ -203,7 +203,7 @@ export function updateJcState(state: JcState, update: JcStateUpdate): JcState {
         const validated = validateConfirmation(kind, value)
         if (kind === 'figures') confirmations.figures = validated as FiguresConfirmation
         else if (kind === 'outline') confirmations.outline = validated as OutlineConfirmation
-        else confirmations.deck = validated as DeckConfirmation
+        else confirmations.slides = validated as SlidesConfirmation
       }
     }
   }
@@ -403,7 +403,7 @@ function formatConfirmation(kind: ConfirmationKind, value: ConfirmationCheck['re
     const confirmation = value as OutlineConfirmation
     return `{ digest: ${formatScalar(confirmation.digest)}, at: ${formatScalar(confirmation.at)} }`
   }
-  const confirmation = value as DeckConfirmation
+  const confirmation = value as SlidesConfirmation
   return `{ digest: ${formatScalar(confirmation.digest)}, groups_digest: ${formatScalar(confirmation.groups_digest)}, at: ${formatScalar(confirmation.at)} }`
 }
 
@@ -508,6 +508,6 @@ export async function summarizeProjectConfirmations(projectDir: string, state?: 
     if (typeof raw.revision === 'number' && Number.isInteger(raw.revision) && raw.revision >= 0) current.figures = { revision: raw.revision }
   } catch { /* absent or malformed files are represented as missing, not as confirmed */ }
   try { current.outline = { digest: await digestFile(join(projectDir, 'outline.md')) } } catch { /* missing */ }
-  try { current.deck = { digest: await digestFile(join(projectDir, 'deck.md')), groups_digest: await digestFile(join(projectDir, 'groups.json')) } } catch { /* missing */ }
+  try { current.slides = { digest: await digestFile(join(projectDir, 'slides.md')), groups_digest: await digestFile(join(projectDir, 'groups.json')) } } catch { /* missing */ }
   return summarizeConfirmations(state ?? await readJcFile(join(projectDir, 'jc.md')), current)
 }

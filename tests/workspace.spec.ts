@@ -22,7 +22,12 @@ describe('宿主文件适配', () => {
       visited.push(p)
       return {ok: true, value: {truncated: false, entries: p === '.' ? [{name: '论文', type: 'directory'}, {name: '.git', type: 'directory'}] : [{name: 'jc.md', type: 'file'}]}}
     }} as unknown as WorkspaceRemote
-    expect(await discoverProjects(remote, 's', new AbortController().signal)).toEqual([{path: '论文', title: '论文'}])
+    expect(await discoverProjects(remote, 's', new AbortController().signal)).toEqual([{path: '论文', title: '论文', artifacts: ['jc.md']}])
     expect(visited).toEqual(['.', '论文'])
   })
+})
+
+it('发现当前目录的局部切图与一级拼图项目，不要求 jc.md', async () => {
+  const remote = {list: async (_s: string, path: string) => ({ok:true, value:{truncated:false, entries: path === '.' ? [{name:'figures.json',type:'file'},{name:'collage',type:'directory'}] : [{name:'groups.json',type:'file'}]}})} as unknown as WorkspaceRemote
+  expect((await discoverProjects(remote,'s',new AbortController().signal)).map(p => p.path)).toEqual(['','collage'])
 })
