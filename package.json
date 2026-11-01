@@ -40,7 +40,10 @@
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts"
+    "lib/typert.remote-client.d.ts",
+    "README.zh-CN.md",
+    "SECURITY.md",
+    "docs/assets/free-composition.png"
   ],
   "dsh": {
     "bundle": {
@@ -68,7 +71,9 @@
     "build": "tsdown --config tsdown.config.ts && node scripts/generate-remote.mjs && tsdown --config tsdown.client.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "pretest": "npm run build"
+    "pretest": "npm run build",
+    "fixtures:fetch": "node scripts/fetch-fixtures.mjs",
+    "verify:pack": "npm run build && node scripts/verify-pack.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0",
@@ -95,5 +100,20 @@
     "tsdown": "^0.23.3",
     "typescript": "^5.9.0",
     "vitest": "^5.0.5"
-  }
+  },
+  "homepage": "https://github.com/zhang-bin-98/dsh-journal-club#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhang-bin-98/dsh-journal-club.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zhang-bin-98/dsh-journal-club/issues"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "journal-club",
+    "biomedical-research",
+    "scientific-presentations"
+  ]
 }

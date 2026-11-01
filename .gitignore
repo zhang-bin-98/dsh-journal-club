@@ -14,3 +14,8 @@ lib/
 # 环境
 .env
 .env.*
+
+# 真实论文仅供本地回归，按 manifest 下载
+/tests/fixtures/papers/*.pdf
+!/tests/fixtures/papers/rotated-landscape.pdf
+/tests/fixtures/parse/2605.13902.content-list.json

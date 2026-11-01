@@ -30,6 +30,7 @@
 | [自由拼图](product/自由拼图.md) | 手动组合 Panel、按图片外缘导出与图组保存 |
 | [slides 格式](product/slides格式.md) | 做 slides.md 生成、validate、PPTX 编排（M2、M3、M5） |
 | [对话入口](product/对话入口.md) | 做 skill 触发分流、恢复、jc.md（M3、M6） |
+| [开发与发布](development.md) | 本地回归、main/develop 分支和 GitHub 发布 |
 | [决策记录](decisions.md) | 想改某个设计、或好奇「为什么当时这么定」 |
 
 ## 文档一览
