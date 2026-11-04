@@ -178,7 +178,7 @@ const css = `
   0%, 100% { box-shadow: 0 0 0 0 transparent; }
   15% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--jc-accent) 25%, transparent); }
 }
-.jc-figureHeader { align-items: flex-start; background: var(--jc-surface-raised); display: flex; gap: 8px; justify-content: space-between; padding: 10px; }
+.jc-figureHeader { align-items: flex-start; background: var(--jc-surface-raised); border-radius: 7px 7px 0 0; display: flex; gap: 8px; justify-content: space-between; padding: 10px; }
 .jc-figureLabel { font-size: 13px; font-weight: 650; }
 .jc-figureMeta { color: var(--jc-muted); font-size: 11px; margin-top: 3px; }
 .jc-badge, .jc-warningBadge, .jc-changedBadge { border: 1px solid var(--jc-border); border-radius: 999px; color: var(--jc-muted); font-size: 10px; padding: 2px 6px; }
