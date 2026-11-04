@@ -19,7 +19,7 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 
 项目状态 helper 可由 `dsh-journal-club/project` 导入；skill 与文件示例、科研叙事规则、五种研究策略一并随包交付。完整流程在论文子文件夹中创建 `jc.md` 和空 `groups.json`，首次图源写入使用 `update_figures` 的 `base_rev: 0` 初始化协议；局部任务不创建项目状态。
 
-在自己的论文工作目录使用插件，无需在插件源码仓库内操作。MinerU v0.5.9 实测需分别运行 `mineru-open-api extract main.pdf -f md -o parse/main/` 与 `mineru-open-api extract main.pdf -f json -o parse/main/`，复用已获取的产物，补充材料单独解析；组合格式曾被服务端拒绝，见 [D21](docs/decisions.md#d21-独立论文工作区与真实解析格式2026-10-29)。云端解析会上传论文，token 通过 CLI auth 或环境变量配置，不写入项目，并在实际执行环境验证可用性。PPTX 主路径为外部 dsh-ppt-maker，需在目标宿主安装并验收；未安装时仍保留 markdown 与图片产物。
+在自己的论文工作目录使用插件，无需在插件源码仓库内操作。论文解析改由随包 Node 脚本直接调用官方 MinerU API，不再要求全局安装 MinerU CLI。设置 `MINERU_TOKEN`，或复用已有 `~/.mineru/config.yaml`；token 不进入命令参数和项目文件。skill 会获得 runner 的绝对路径，执行 `node "<runner>" main.pdf --output parse --id main`；补充材料使用 `--id supp`。一次任务同时取得 Markdown、JSON 和图片。重复相同命令复用缓存或恢复已有任务，下载失败不重新上传；详见 [API 迁移契约](docs/architecture/架构设计.md#61-mineru-api-runner)。云端解析仍会上传论文。PPTX 主路径为外部 dsh-ppt-maker，需在目标宿主安装并验收；未安装时仍保留 markdown 与图片产物。
 
 ## 核心闭环
 
@@ -35,7 +35,7 @@ npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，d
 - **agent 信任与自由度**：不自建审批流——agent 修改产物文件与编辑代码同等地位，diff 聊天可见；图源写入统一经 `update_figures`（乐观锁，防并发覆盖）。
 - **工具原子化**：5 个原子工具（渲染 / 裁切 / 拼图 / 图源写入 / 校验），零相互耦合、以文件为接口，可单独调用；四步流程只是 skill 编排的默认剧本。
 - **复用优先**：SmartJC 的提示词、图组布局算法、叙事规则、workflow 蓝本按清单搬运（架构 §1.3），不重新开发。
-- **依赖极简**：纯 Node（pdfjs-dist / @napi-rs/canvas / sharp / zod）+ 全局官方 `mineru-open-api` CLI；预览与 PPTX 生成用 dsh 生态现成能力（documentpreview / office-to-pdf / dsh-ppt-maker）。
+- **依赖极简**：纯 Node（pdfjs-dist / @napi-rs/canvas / sharp / zod / yaml / yauzl），MinerU API runner 随包提供；预览与 PPTX 生成用 dsh 生态现成能力（documentpreview / office-to-pdf / dsh-ppt-maker）。
 
 ## 文档导航
 

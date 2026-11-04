@@ -76,10 +76,10 @@ Panel ID 全局唯一、删除后不复用；不以图号重命名现有 ID。wh
 ## parse/manifest.json
 
 ```json
-{"documents":[{"id":"main","source_sha256":"<PDF 原始字节 SHA-256>","mode":"extract","cli_version":"0.5.9","artifacts":["md","content-list","images"],"status":"done"}]}
+{"documents":[{"id":"main","source_sha256":"<PDF 原始字节 SHA-256>","mode":"extract","provider":"mineru-api","parser_version":1,"options_digest":"<实际参数摘要>","batch_id":"<实际任务标识>","uploaded":true,"artifacts":["main/main.md","main/main.json","main/images/example.jpg"],"artifact_sha256":{"main/main.md":"<实际摘要>","main/main.json":"<实际摘要>","main/images/example.jpg":"<实际摘要>"},"status":"done"}]}
 ```
 
-每份 PDF 单独输出到 `parse/main/` 或 `parse/supp/`，检查 CLI 实际输出位置和文件名；manifest 位于 parse 根目录。artifacts 表示真实存在的产物种类，extract 必须检查 md、content-list 及所引用图片，flash 只有 md。开始/失败时标 partial；全部所需输出存在才标 done。源摘要、模式、done、产物齐全四者匹配才复用。不能仅因目录非空跳过解析。
+此示例仅说明结构，manifest 由 runner 维护，不要手写示例占位值。每份 PDF 单独输出到 `parse/main/` 或 `parse/supp/`，正文/清单规范化为 `<id>.md`、`<id>.json`；manifest 位于 parse 根目录。artifacts 是相对 parse 根目录的实际文件路径，每个文件都记录 SHA-256。extract 校验 Markdown、content-list 和图像引用，flash 只有 Markdown；成功前为 partial。缓存还要求源摘要、模式、参数摘要、provider/parser_version 与全部产物摘要匹配。高精度保存 batch_id，flash 保存 task_id；上传中断时 uploaded 可能为 false。旧 CLI 元数据可保留，但不直接当作 API 缓存命中。不得保存 token、签名 URL。
 
 ## analysis.md 与 outline.md
 

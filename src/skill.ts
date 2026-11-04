@@ -52,7 +52,7 @@ export function registerJournalClubSkill(ctx: Context): void {
       name: skill.name,
       description: skill.description,
       source: 'bundled',
-      content: `Skill directory: ${fileURLToPath(new URL('.', SKILL_URL))}\nProject helper: ${fileURLToPath(new URL('../lib/project.js', import.meta.url))}\n\n${skill.content}`,
+      content: `Skill directory: ${fileURLToPath(new URL('.', SKILL_URL))}\nProject helper: ${fileURLToPath(new URL('../lib/project.js', import.meta.url))}\nMinerU API runner: ${fileURLToPath(new URL('../lib/mineru.js', import.meta.url))}\n\n${skill.content}`,
       invocation: { modelInvocable: true, userInvocable: true },
     })
   })
