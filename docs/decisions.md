@@ -311,6 +311,13 @@ M2 验证：`npm run typecheck`、`npm test`（29/29）和 `npm run build` 均�
 - **范围与取舍**：细则集中在 narrative.md，入口和 formats 指向它；同步纠正机制/组学策略中过宽的删减措辞。outline 只维护计划证据单元与节奏表，最终页码映射在 slides 确认回复核对，不改已确认 outline 的摘要。讲述提示保留在讲稿/notes，不投影；不新增 schema、数据文件、工具、模板引擎或硬性页数/图数校验。
 - **验证边界**：随包 skill 的 quick_validate 检查通过；Gemini 复核短时长多主图、确认后页码映射、明确删图与无依据 excluded 三类情景，行为符合约定。讨论记录在忽略目录 `out/skill-academic-20261101/`。不等同真实论文冷启动或实际口播时长验收。仍由人工核对科学内容、可读性与节奏。
 
+## D41 MinerU 下载超时与 PowerShell 退出码（2026-11-04）
+
+- **实测与归因**：DSH 0.2.1-rc.5 的实际会话在已切换为完整访问权限后，仍出现 `download zip: context deadline exceeded (Client.Timeout or context cancellation while reading body)`；此前 `SetNamedSecurityInfoW ... grantWrite` 是独立的沙箱启动失败。相同 21 页 PDF 在宿主外直接调用 CLI 0.5.9 时 Markdown/JSON 下载成功；宿主外 Windows PowerShell 5.1 普通模式又复现下载超时，不能将此错误归因于 DSH 特有的权限或进程管理。
+- **接口限制**：核对 CLI 0.5.9 对应版本源码，普通客户端的 HTTP 请求超时为 60 秒，结果 ZIP 的响应体读取也受其约束；`--timeout` 不会改写此上限。`--verbose` 换用未设置该超时的客户端，同一 PowerShell 下的诊断运行成功；这项实现差异及单次对照不能证明所有下载故障的网络根因，调试输出又包含签名链接，不作为日常绕过方式。
+- **调用规则**：模型生成的脚本在 CLI 失败后读取日志，导致 DSH 后台任务显示脚本退出码 0；最小命令对照已复现。skill 要求立即保存 `$LASTEXITCODE`，读日志后仍传播原值，并以实际产物核实完成。PowerShell 5.1 将普通进度 stderr 包装为 `NativeCommandError` 时，不据此单独认定失败；下载失败也不等于 PDF 损坏或需要安装其他 PDF 引擎。不反复重传分块来提高同一个下载超时。
+- **范围与边界**：本次未修改宿主、沙箱 ACL 或全局 CLI，也未迁移真实论文项目。脱敏调用证据与对照结果保存在本地忽略目录；下载路径受网络状态影响，不能把一次成功当作稳定性验收。运行时调整仅补充命令结果判定与失败分类，不新增工具或依赖。
+
 ## 修订记录
 
 - 2026-10-26：初版（D1–D13）。
