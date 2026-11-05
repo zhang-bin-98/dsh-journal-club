@@ -215,7 +215,10 @@ export async function composePanels(args: ComposeRequest, cwd: string, signal: A
   const ids = inputPaths.map(panelIdFromAsset)
   if (new Set(ids).size !== ids.length) throw new Error('assets 包含重复 panel id')
   for (const [index, inputPath] of inputPaths.entries()) {
-    assertInsideDirectory(await realpath(inputPath).catch(() => inputPath), await realpath(projectDir))
+    const canonicalInput = await realpath(inputPath).catch(error => {
+      throw new Error(`成员图片缺失或不可读：${ids[index]}（${inputPath}）：${(error as Error).message}`)
+    })
+    assertInsideDirectory(canonicalInput, await realpath(projectDir))
     const projectRelative = relative(projectDir, inputPath).replaceAll('\\', '/')
     if (projectRelative !== `figures/${ids[index]}.png`) {
       throw new Error(`成员图片必须是项目内 figures/${ids[index]}.png：${inputPath}`)

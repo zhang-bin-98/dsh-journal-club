@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -160,6 +160,27 @@ describe('compose_panels 工具', () => {
       runCtx(work),
     )).rejects.toThrow(/成员图片缺失/u)
     await expect(stat(join(work, 'paper', 'groups', 'missing.png'))).rejects.toThrow()
+    await expect(stat(join(work, 'paper', 'groups.json'))).rejects.toThrow()
+  })
+
+  it('项目经目录别名访问时，缺图仍报告成员缺失', async () => {
+    await symlink(join(work, 'paper'), join(work, 'alias'), process.platform === 'win32' ? 'junction' : 'dir')
+    await expect(captureTool().execute({
+      assets: ['alias/figures/panel-a.png', 'alias/figures/missing.png'],
+      create: true, output: 'alias/groups/missing.png',
+    }, runCtx(work))).rejects.toThrow(/成员图片缺失/u)
+    await expect(stat(join(work, 'paper', 'groups', 'missing.png'))).rejects.toThrow()
+    await expect(stat(join(work, 'paper', 'groups.json'))).rejects.toThrow()
+  })
+
+  it('成员目录链接到项目外时仍拒绝读取和导出', async () => {
+    await rename(join(work, 'paper', 'figures'), join(work, 'outside'))
+    await symlink(join(work, 'outside'), join(work, 'paper', 'figures'), process.platform === 'win32' ? 'junction' : 'dir')
+    await expect(captureTool().execute({
+      assets: ['paper/figures/panel-a.png'],
+      create: true, output: 'paper/groups/escaped.png',
+    }, runCtx(work))).rejects.toThrow(/路径超出目标目录/u)
+    await expect(stat(join(work, 'paper', 'groups', 'escaped.png'))).rejects.toThrow()
     await expect(stat(join(work, 'paper', 'groups.json'))).rejects.toThrow()
   })
 
