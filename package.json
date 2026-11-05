@@ -16,6 +16,7 @@
       "default": "./lib/client.js"
     },
     "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
     "./project": {
       "types": "./lib/project.d.ts",
       "default": "./lib/project.js"
@@ -35,15 +36,14 @@
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "src/skills/journal-club/**",
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts",
-    "README.zh-CN.md",
     "SECURITY.md",
-    "docs/assets/journal-club-banner.en.png",
     "docs/assets/journal-club-banner.zh-CN.png"
   ],
   "dsh": {
