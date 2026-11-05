@@ -16,7 +16,8 @@ export function registerRenderPages(ctx: Context): void {
       name: 'render_pages',
       description:
         '渲染 PDF 指定页为 PNG 底图，写入 PDF 同目录的 pages/<文档名>-<页号>.png。' +
-        '150 DPI 用于整页浏览与核对底图，300 DPI 用于图源/标签精细识别。支持旋转页（按旋转后视觉朝向输出）。',
+        '150 DPI 用于整页浏览与核对底图，300 DPI 用于图源/标签精细识别。支持旋转页（按旋转后视觉朝向输出）。' +
+        '返回 PDF 总页数 num_pages 和各页 PNG 的路径、宽高；可只渲染第 1 页供读图识别论文标题与类型。',
       parameters: {
         path: {
           type: 'string',

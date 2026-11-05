@@ -32,6 +32,8 @@ confirmations:
 
 首次创建及后续修改均调用 `update_figures`。文件不存在时使用 `base_rev: 0`，服务从 `{version:1,status:"draft",revision:0,documents:[],figures:[]}` 应用 patch；例如 `add /documents/-` 加入真实文档、`add /figures/-` 加入图，或 `add` 根路径 `""` 写完整初始对象（revision 必须为 0）。至少包含一份 document；成功返回 revision=1，首次创建没有旧版快照。不要先用通用编辑器落盘。后续读取当前 revision，针对变更使用 JSON Patch，服务负责递增 revision。每次调用后以返回文件为准。
 
+边界由 agent 看原页与图注判断，不以空白带、亮度阈值或轮廓扫描脚本代替视觉切分。`figures/<panel_id>.png` 通过 `crop` 从原 PDF 生成/刷新，不用 Pillow 等脚本另裁页图或覆盖正式资产；脚本准备 patch 参数不能绕过写入通道。
+
 ```json
 {
   "version": 1,
@@ -67,6 +69,8 @@ Panel ID 全局唯一、删除后不复用；不以图号重命名现有 ID。wh
 
 完整流程开始时，若文件不存在，创建以下空清单；不覆盖已有图组。无拼图也对该文件计算确认摘要，之后新建/重拼图组会使确认失效。
 
+正式组合图只由 `compose_panels` 或共用导出核心的工作台保存接口生成，像素与登记信息同步更新。不用图像脚本直接粘贴/缩放后覆盖 `groups/*.png`，也不把核对用的联系图登记为正式汇报图组。此约定不限制派生 PPT/PPTX 的生成或排错脚本。
+
 ```json
 {"version":1,"groups":[]}
 ```
@@ -76,10 +80,10 @@ Panel ID 全局唯一、删除后不复用；不以图号重命名现有 ID。wh
 ## parse/manifest.json
 
 ```json
-{"documents":[{"id":"main","source_sha256":"<PDF 原始字节 SHA-256>","mode":"extract","cli_version":"0.5.9","artifacts":["md","content-list","images"],"status":"done"}]}
+{"documents":[{"id":"main","source_sha256":"<PDF 原始字节 SHA-256>","mode":"extract","provider":"mineru-api","parser_version":1,"options_digest":"<实际参数摘要>","batch_id":"<实际任务标识>","uploaded":true,"artifacts":["main/main.md","main/main.json","main/images/example.jpg"],"artifact_sha256":{"main/main.md":"<实际摘要>","main/main.json":"<实际摘要>","main/images/example.jpg":"<实际摘要>"},"status":"done"}]}
 ```
 
-每份 PDF 单独输出到 `parse/main/` 或 `parse/supp/`，检查 CLI 实际输出位置和文件名；manifest 位于 parse 根目录。artifacts 表示真实存在的产物种类，extract 必须检查 md、content-list 及所引用图片，flash 只有 md。开始/失败时标 partial；全部所需输出存在才标 done。源摘要、模式、done、产物齐全四者匹配才复用。不能仅因目录非空跳过解析。
+此示例仅说明结构，manifest 由 runner 维护，不要手写示例占位值。每份 PDF 单独输出到 `parse/main/` 或 `parse/supp/`，正文/清单规范化为 `<id>.md`、`<id>.json`；manifest 位于 parse 根目录。artifacts 是相对 parse 根目录的实际文件路径，每个文件都记录 SHA-256。extract 校验 Markdown、content-list 和图像引用，flash 只有 Markdown；成功前为 partial。缓存还要求源摘要、模式、参数摘要、provider/parser_version 与全部产物摘要匹配。高精度保存 batch_id，flash 保存 task_id；上传中断时 uploaded 可能为 false。旧 CLI 元数据可保留，但不直接当作 API 缓存命中。不得保存 token、签名 URL。
 
 ## analysis.md 与 outline.md
 

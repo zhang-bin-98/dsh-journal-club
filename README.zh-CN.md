@@ -32,7 +32,7 @@
 
 请带上版本号，避免只写包名时安装到较旧的版本。卸载可在插件页面点击 **移除**，已有论文项目文件会保留。
 
-完整论文流程需配置 [MinerU CLI](https://github.com/opendatalab/MinerU-Ecosystem)；PPTX 导出还需 [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker)。命令行安装与开发说明见 [架构文档](docs/architecture/架构设计.md#安装说明)，数据处理范围见 [数据边界](SECURITY.md)。
+完整论文流程通过随包 Node runner 调用官方 MinerU API，无需全局 MinerU CLI 或 Python PDF 引擎。配置 `MINERU_TOKEN`，也可复用已有 `~/.mineru/config.yaml` 中的 token；论文仍会上传 MinerU。PPTX 导出还需 [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker)。命令行安装与开发说明见 [架构文档](docs/architecture/架构设计.md#安装说明)，数据处理范围见 [数据边界](SECURITY.md)。
 
 ## 第一次使用
 

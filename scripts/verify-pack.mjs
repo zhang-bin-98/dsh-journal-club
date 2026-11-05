@@ -12,7 +12,7 @@ const [packed] = JSON.parse(execFileSync(process.execPath,
   [npmCli, 'pack', '--ignore-scripts', '--json', '--pack-destination', destination], { encoding: 'utf8' }))
 const files = new Set(packed.files.map(file => file.path))
 const required = ['package.json', 'LICENSE', 'README.md', 'README.zh-CN.md', 'SECURITY.md',
-  'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/project.js',
+  'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/project.js', 'lib/mineru.js',
   'lib/typert.host.js', 'lib/typert.remote-client.js',
   'src/skills/journal-club/SKILL.md', 'src/skills/journal-club/references/narrative.md',
   'src/skills/journal-club/references/formats.md',

@@ -5,6 +5,9 @@
 /docs/verification/
 /.playwright-cli/
 
+# 本地论文样例与解析缓存（已跟踪的最小回归基线保留）
+/tests/fixtures/
+
 # Node
 node_modules/
 dist/
@@ -14,8 +17,3 @@ lib/
 # 环境
 .env
 .env.*
-
-# 真实论文仅供本地回归，按 manifest 下载
-/tests/fixtures/papers/*.pdf
-!/tests/fixtures/papers/rotated-landscape.pdf
-/tests/fixtures/parse/2605.13902.content-list.json

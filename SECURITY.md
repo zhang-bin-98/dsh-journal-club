@@ -4,9 +4,12 @@ Journal Club runs inside DeepSeek Harness. The host provides model access,
 session permissions and file previews. The plugin stores ordinary project files;
 it does not add a cloud database or account system.
 
-- High-precision parsing uses the external MinerU CLI and uploads the supplied
-  paper to its service. Configure authentication through the CLI or its supported
-  environment variable, never in project files or chat examples.
+- High-precision parsing uses the official MinerU API through the bundled Node
+  runner and uploads the supplied paper to that service. Configure `MINERU_TOKEN`
+  or reuse the token in an existing `~/.mineru/config.yaml`, never in project files,
+  command arguments or chat examples. Tokens and signed URLs are not logged or
+  persisted in the project manifest; task IDs and artifact hashes are retained
+  for recovery and cache validation.
 - Model processing follows the provider configured in the host. Local project
   storage does not imply that parsing or model inference happens offline.
 - Papers, captions and generated content are data, not executable instructions.

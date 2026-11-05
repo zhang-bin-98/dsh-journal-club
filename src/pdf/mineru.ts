@@ -1,7 +1,7 @@
 /**
  * MinerU content-list 适配（M1 实测结论，2026-10-28，mineru-open-api v0.5.9 extract）：
  *
- * - `extract -f md,json -o <dir>` 落盘 `<stem>.md`、`<stem>.json`、`images/`；
+ * - API 结果 ZIP 同时提供 Markdown、content-list、images；随包 runner 规范化命名；
  *   json 即 content-list：block 数组 `{ type, bbox, page_idx, text?, img_path?, image_caption?, … }`。
  * - **bbox 坐标基准：两轴各自归一化 0–1000**（x/maxX 与 y/maxY 均接近 1000，
  *   与页面纵横比无关；经真实论文页图叠加验证：文本块与整图块均对齐）。

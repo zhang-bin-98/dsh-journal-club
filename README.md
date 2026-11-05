@@ -32,7 +32,7 @@ Journal Club is a plugin for [DeepSeek Harness](https://github.com/deepseek-ai/d
 
 Include the version number to avoid receiving an older version when installing by name alone. To uninstall, use **Remove** on the plugin page; existing paper project files are preserved.
 
-The full workflow requires the [MinerU CLI](https://github.com/opendatalab/MinerU-Ecosystem), and PPTX export also needs [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker). For CLI installation and development, see [setup details](docs/architecture/架构设计.md#安装说明); see [data boundaries](SECURITY.md) for data handling.
+The full workflow uses the bundled Node runner for the official MinerU API; a global MinerU CLI or Python PDF engine is not required. Configure `MINERU_TOKEN`, or reuse the token in an existing `~/.mineru/config.yaml`. Papers are uploaded to MinerU. PPTX export also needs [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker). See [setup details](docs/architecture/架构设计.md#安装说明) and [data boundaries](SECURITY.md).
 
 ## Your first journal club
 

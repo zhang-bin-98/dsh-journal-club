@@ -8,7 +8,7 @@ import { decoratorPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'
  * 避免打包 pdfjs worker 之类的动态加载路径。
  */
 export default defineConfig({
-  entry: { index: 'src/index.ts', project: 'src/project.ts', types: 'src/types.ts' },
+  entry: { index: 'src/index.ts', project: 'src/project.ts', types: 'src/types.ts', mineru: 'src/mineru/cli.ts' },
   plugins: [decoratorPlugin()],
   outDir: 'lib',
   format: 'esm',
@@ -31,6 +31,8 @@ export default defineConfig({
       'pdfjs-dist/legacy/build/pdf.worker.mjs',
       '@napi-rs/canvas',
       'zod',
+      'yaml',
+      'yauzl',
     ],
   },
 })
