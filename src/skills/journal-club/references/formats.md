@@ -32,6 +32,8 @@ confirmations:
 
 首次创建及后续修改均调用 `update_figures`。文件不存在时使用 `base_rev: 0`，服务从 `{version:1,status:"draft",revision:0,documents:[],figures:[]}` 应用 patch；例如 `add /documents/-` 加入真实文档、`add /figures/-` 加入图，或 `add` 根路径 `""` 写完整初始对象（revision 必须为 0）。至少包含一份 document；成功返回 revision=1，首次创建没有旧版快照。不要先用通用编辑器落盘。后续读取当前 revision，针对变更使用 JSON Patch，服务负责递增 revision。每次调用后以返回文件为准。
 
+边界由 agent 看原页与图注判断，不以空白带、亮度阈值或轮廓扫描脚本代替视觉切分。`figures/<panel_id>.png` 通过 `crop` 从原 PDF 生成/刷新，不用 Pillow 等脚本另裁页图或覆盖正式资产；脚本准备 patch 参数不能绕过写入通道。
+
 ```json
 {
   "version": 1,
@@ -66,6 +68,8 @@ Panel ID 全局唯一、删除后不复用；不以图号重命名现有 ID。wh
 ## groups.json
 
 完整流程开始时，若文件不存在，创建以下空清单；不覆盖已有图组。无拼图也对该文件计算确认摘要，之后新建/重拼图组会使确认失效。
+
+正式组合图只由 `compose_panels` 或共用导出核心的工作台保存接口生成，像素与登记信息同步更新。不用图像脚本直接粘贴/缩放后覆盖 `groups/*.png`，也不把核对用的联系图登记为正式汇报图组。此约定不限制派生 PPT/PPTX 的生成或排错脚本。
 
 ```json
 {"version":1,"groups":[]}
