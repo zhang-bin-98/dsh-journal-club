@@ -65,18 +65,20 @@ it('标签推送使用事件中的标签，手动恢复使用指定标签', asyn
 const archiveBytes = Buffer.from('fixed release archive')
 const integrity = `sha512-${createHash('sha512').update(archiveBytes).digest('base64')}`
 it.each([
-  { status: 404, metadata: {}, expected: false },
-  { status: 200, metadata: { ...source, dist: { integrity } }, expected: true },
-  { status: 200, metadata: { ...source, dist: { integrity: 'sha512-different' } }, expected: undefined },
-  { status: 503, metadata: {}, expected: undefined },
-])('npm 检查响应 $status，已发布状态 $expected', async ({ status, metadata, expected }) => {
+  { status: 404, metadata: {}, expected: false, required: false },
+  { status: 200, metadata: { ...source, dist: { integrity } }, expected: true, required: false },
+  { status: 200, metadata: { ...source, dist: { integrity: 'sha512-different' } }, expected: undefined, required: false },
+  { status: 503, metadata: {}, expected: undefined, required: false },
+  { status: 404, metadata: {}, expected: undefined, required: true },
+  { status: 200, metadata: { ...source, dist: { integrity } }, expected: true, required: true },
+])('npm 检查响应 $status，严格校验 $required，已发布状态 $expected', async ({ status, metadata, expected, required }) => {
   await writeFile(join(work, 'release.tgz'), archiveBytes)
   const server = createServer((_request, response) => { response.writeHead(status, { 'content-type': 'application/json' }); response.end(JSON.stringify(metadata)) })
   await new Promise<void>(done => { server.listen(0, '127.0.0.1', done) })
   try {
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('Expected test server address')
-    const check = node(checkNpm, ['release.tgz', 'package.json', `http://127.0.0.1:${address.port}`])
+    const check = node(checkNpm, ['release.tgz', 'package.json', `http://127.0.0.1:${address.port}`], { NPM_REQUIRE_PUBLISHED: String(required), NPM_VERIFY_WAIT_SECONDS: '0' })
     if (expected === undefined) await expect(check).rejects.toThrow()
     else {
       await check

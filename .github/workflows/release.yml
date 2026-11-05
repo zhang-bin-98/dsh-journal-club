@@ -148,6 +148,12 @@ jobs:
             fi
             exit 1
           fi
+      - name: Verify the public npm version before completing the release
+        env:
+          ARCHIVE: ${{ steps.asset.outputs.archive }}
+          NPM_REQUIRE_PUBLISHED: 'true'
+          NPM_VERIFY_WAIT_SECONDS: '180'
+        run: node scripts/check-npm-release.mjs "$ARCHIVE" out/release-source.json
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
