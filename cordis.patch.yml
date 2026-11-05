@@ -1,0 +1,5 @@
+# 五个原子工具与 Journal Club host 服务。
+# package.json 的 dsh.client 与 ./client 导出提供工作台和聊天卡片。
+- insert:
+  - id: journal-club
+    name: dsh-journal-club
