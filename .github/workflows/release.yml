@@ -141,7 +141,11 @@ jobs:
           else
             cat out/npm-publish.log
             code=$(sed -nE 's/^npm error code ([A-Z0-9_]+)$/\1/p' out/npm-publish.log | head -n 1)
-            echo "::error title=npm publish::Publication failed: ${code:-see npm log}"
+            if [ "$code" = EOTP ]; then
+              echo '::error title=npm publish EOTP::Update NPM_TOKEN with a granular token that allows direct publishing and has Bypass 2FA enabled.'
+            else
+              echo "::error title=npm publish::Publication failed: ${code:-see npm log}"
+            fi
             exit 1
           fi
       - name: Publish GitHub Release
