@@ -3,18 +3,32 @@ name: Release
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    # Workflow fixes resume the current version's existing tag.
+    # GitHub does not apply path filters to tag pushes.
+    paths: ['.github/workflows/release.yml', '.github/workflows/npm-publish.yml']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本标签；留空使用 package.json 当前版本'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref }}-${{ inputs.tag || 'current' }}
   cancel-in-progress: false
 
 jobs:
-  package:
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.release.outputs.ready }}
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -23,10 +37,35 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
+      - name: Resolve the version tag
+        id: release
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: node scripts/plan-release.mjs
+
+  package:
+    needs: plan
+    if: needs.plan.outputs.ready == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
           cache: npm
       - name: Verify version and main ancestry
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        shell: bash
         run: |
           node --input-type=module -e 'import { readFileSync } from "node:fs"; const p = JSON.parse(readFileSync("package.json", "utf8")); if (process.env.RELEASE_TAG !== `v${p.version}`) throw new Error("Tag/package version mismatch");'
           git merge-base --is-ancestor HEAD origin/main
@@ -37,6 +76,7 @@ jobs:
       - run: npm run verify:pack
       - run: git diff --exit-code
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: runner.os == 'Linux'
         with:
           name: release-package
           path: |
@@ -45,22 +85,81 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  draft:
-    needs: package
+  publish:
+    needs: [plan, package]
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    concurrency:
+      group: publish-${{ needs.plan.outputs.tag }}
+      cancel-in-progress: false
     permissions:
       actions: read
       contents: write
+      id-token: write
     env:
-      GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.plan.outputs.commit }}
     steps:
-      - name: Download verified package
-        run: gh run download "$GITHUB_RUN_ID" --name release-package --dir release
-      - name: Check checksum and create draft
-        working-directory: release
+      # Use current automation scripts to verify the original tag's package.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Download the verified package
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          sha256sum -c ./*.sha256
-          gh release create "$RELEASE_TAG" ./*.tgz ./*.sha256 --verify-tag --draft --generate-notes --title "Journal Club $RELEASE_TAG"
+          gh run download "$GITHUB_RUN_ID" --name release-package --dir release
+          mkdir -p out
+          git show "$RELEASE_COMMIT:package.json" > out/release-source.json
+      - name: Verify package, version and checksum
+        id: asset
+        run: node scripts/verify-release-asset.mjs "$RELEASE_TAG" release out/release-source.json
+      - name: Check whether this exact package is already on npm
+        id: npm
+        env:
+          ARCHIVE: ${{ steps.asset.outputs.archive }}
+        run: node scripts/check-npm-release.mjs "$ARCHIVE" out/release-source.json
+      - name: Publish to npm
+        if: steps.npm.outputs.published != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          ARCHIVE: ${{ steps.asset.outputs.archive }}
+          DIST_TAG: ${{ steps.asset.outputs.dist_tag }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo '::error::Configure the NPM_TOKEN repository secret before publishing to npm.'
+            exit 1
+          fi
+          if npm publish "./$ARCHIVE" --ignore-scripts --access public --provenance --tag "$DIST_TAG" > out/npm-publish.log 2>&1; then
+            cat out/npm-publish.log
+          else
+            cat out/npm-publish.log
+            code=$(sed -nE 's/^npm error code ([A-Z0-9_]+)$/\1/p' out/npm-publish.log | head -n 1)
+            echo "::error title=npm publish::Publication failed: ${code:-see npm log}"
+            exit 1
+          fi
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > out/release-draft.txt; then
+            if [ "$(cat out/release-draft.txt)" = true ]; then
+              gh release upload "$RELEASE_TAG" release/*.tgz release/*.sha256 --clobber
+              gh release edit "$RELEASE_TAG" --draft=false "${flags[@]}"
+            else
+              gh release download "$RELEASE_TAG" --pattern '*.tgz' --pattern '*.sha256' --dir existing
+              node scripts/verify-release-asset.mjs "$RELEASE_TAG" existing out/release-source.json
+              cmp release/*.sha256 existing/*.sha256
+              echo 'The identical GitHub Release is already published.'
+            fi
+          else
+            gh release create "$RELEASE_TAG" release/*.tgz release/*.sha256 --verify-tag --generate-notes --title "Journal Club $RELEASE_TAG" "${flags[@]}"
+          fi

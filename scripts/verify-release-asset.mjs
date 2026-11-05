@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto'
 import { appendFile, readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-const [tag, directory = 'release'] = process.argv.slice(2)
-const source = JSON.parse(await readFile('package.json', 'utf8'))
+const [tag, directory = 'release', sourcePath = 'package.json'] = process.argv.slice(2)
+const source = JSON.parse(await readFile(sourcePath, 'utf8'))
 if (source.name !== 'dsh-journal-club' || tag !== `v${source.version}`
   || !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) {
   throw new Error('Release tag and package name/version must match the checked-out source')
