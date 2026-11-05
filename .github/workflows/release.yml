@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify version and main ancestry
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; const p = JSON.parse(readFileSync("package.json", "utf8")); if (process.env.RELEASE_TAG !== `v${p.version}`) throw new Error("Tag/package version mismatch");'
+          git merge-base --is-ancestor HEAD origin/main
+      - run: npm ci
+      - run: npm run fixtures:fetch
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run verify:pack
+      - run: git diff --exit-code
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-package
+          path: |
+            out/release/*.tgz
+            out/release/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  draft:
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Download verified package
+        run: gh run download "$GITHUB_RUN_ID" --name release-package --dir release
+      - name: Check checksum and create draft
+        working-directory: release
+        run: |
+          sha256sum -c ./*.sha256
+          gh release create "$RELEASE_TAG" ./*.tgz ./*.sha256 --verify-tag --draft --generate-notes --title "Journal Club $RELEASE_TAG"

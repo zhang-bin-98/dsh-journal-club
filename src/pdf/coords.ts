@@ -1,7 +1,7 @@
 import type { BBox } from '../figures/figuresJson.ts'
 
 /**
- * bbox 坐标约定（架构 §1.4，继承 SmartJC）：统一 PDF 点（pt）、原页旋转后基准。
+ * bbox 坐标约定（架构 §4.1，继承 SmartJC）：统一 PDF 点（pt）、原页旋转后基准。
  * 旋转后基准 = page.getViewport({ scale: 1 }) 的宽高：横排页即 MediaBox 常规朝向，
  * 旋转 90/270 的页按旋转后的视觉朝向计量，与渲染底图所见一致。
  */

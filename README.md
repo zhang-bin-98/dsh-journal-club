@@ -1,68 +1,35 @@
-# dsh-journal-club
+# Journal Club · DeepSeek Harness 文献汇报插件
 
-运行在 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) 内的生物医学论文 **Journal Club 汇报插件**：研究者上传论文 PDF，由 agent 完成解析、图源切分、叙事大纲与幻灯片分页，交付可转 PPTX 的 markdown 版幻灯片（含讲稿与图组）。
+[![CI](https://github.com/zhang-bin-98/dsh-journal-club/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zhang-bin-98/dsh-journal-club/actions/workflows/ci.yml)[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)[![Node.js >=22.13](https://img.shields.io/badge/Node.js-%3E%3D22.13-339933?logo=nodedotjs&logoColor=white)](package.json)
 
-> **状态（2026-10-31）：M6 已按人工协作口径完成。五个工具、skill 文件链、工作台与宿主集成已实现；其后新增工作台两栏布局、改框后重裁、自由拼图与写入排队（D32–D36），当前 141 项回归、类型检查和构建通过，新功能的宿主手测见各验收记录。M6 时（2026-10-30）为 101 项回归。QCIC、空间组学、ModT 三篇真实全流程及 aging 新论文演示均已导出 PPTX，完成讲稿、图片和 PowerPoint 检查。** 保留人工检查、调框与整图兜底，不宣称全自动切分或科研结论无误。证据见 本地《开发验收》记录、本地《M6 冷启动验收》记录 和 本地《PPTX 集成》记录。
+从生物医学论文出发，核对原图、自由拼图，生成带讲稿的学术汇报。
 
-## 开发
+A DeepSeek Harness plugin that turns biomedical papers into figure-grounded journal club presentations with editable compositions and speaker notes.
 
-```sh
-npm install        # 安装依赖（Node ≥ 22.13）
-npm run typecheck  # 类型检查
-npm test           # vitest 固定 fixture 回归（3 篇真实论文 + 旋转页资产 + MinerU 真实解析产物）
-npm run build      # 构建 host（lib/index.js）与 client（lib/client.js，dsh client-modules 工厂格式）
-```
+![论文解析、图源核对、自由拼图、汇报与讲稿](docs/assets/journal-club-banner.zh-CN.png)
 
-安装到 dsh：`dsh plugin add <本仓库路径>`（bundle 声明与插件行见 `package.json` 的
-`dsh` 字段与 `cordis.patch.yml`）。已注册工具：`render_pages`（PDF 页 → PNG 底图）、`crop`（figures.json panel bbox → figures/<id>.png）、
-`compose_panels`（拼合 Panel 并登记 groups.json）、`update_figures`（初始化 / RFC 6902 patch + base_rev CAS + .history 快照）、`validate`（figures/groups/slides 一致性校验）。
+## 安装
 
-项目状态 helper 可由 `dsh-journal-club/project` 导入；skill 与文件示例、科研叙事规则、五种研究策略一并随包交付。完整流程在论文子文件夹中创建 `jc.md` 和空 `groups.json`，首次图源写入使用 `update_figures` 的 `base_rev: 0` 初始化协议；局部任务不创建项目状态。
+在 DSH 侧栏打开 **插件 → 添加插件**，输入 `dsh-journal-club@0.0.1`，安装后点击 **立即启用**。也可以在对话中说：“帮我安装 DSH 插件 `dsh-journal-club@0.0.1`”。
 
-在自己的论文工作目录使用插件，无需在插件源码仓库内操作。论文解析改由随包 Node 脚本直接调用官方 MinerU API，不再要求全局安装 MinerU CLI。设置 `MINERU_TOKEN`，或复用已有 `~/.mineru/config.yaml`；token 不进入命令参数和项目文件。skill 会获得 runner 的绝对路径，执行 `node "<runner>" main.pdf --output parse --id main`；补充材料使用 `--id supp`。一次任务同时取得 Markdown、JSON 和图片。重复相同命令复用缓存或恢复已有任务，下载失败不重新上传；详见 [API 迁移契约](docs/architecture/架构设计.md#61-mineru-api-runner)。云端解析仍会上传论文。PPTX 主路径为外部 dsh-ppt-maker，需在目标宿主安装并验收；未安装时仍保留 markdown 与图片产物。
+论文解析使用官方 MinerU API，配置 `MINERU_TOKEN`，或复用已有 `~/.mineru/config.yaml` 中的 token；无需全局 MinerU CLI 或 Python PDF 引擎。论文会上传 MinerU。导出 PPTX 需另装 [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker)。
 
-## 核心闭环
+## 使用
 
-**在会话工作目录发起 → 插件建项目文件夹并复制 PDF → 论文解析与自动切图（MinerU + agent 视觉）→ 图源核对【确认点 1】→ 叙事大纲 outline.md【确认点 2】→ 幻灯片分页 slides.md 与拼图【确认点 3：渲染前确认】→ PPTX 渲染（agent + 生态插件）。**
+1. 在 DSH 打开自己的论文工作目录，附上主论文和可选的补充 PDF。
+2. 提出要求，例如：“用 journal-club 做一份 15 分钟中文文献汇报，保留全部主图，附讲稿。”
+3. 在右侧 **Journal Club** 工作台检查图源、调整裁切和拼图，依次确认**图源、大纲、文稿**，再导出 PPTX。
 
-产品移植自 [SmartJC](https://github.com/)（独立 PWA 形态的同类产品，叙事规则与流程设计的来源），运行形态换成 dsh 插件。
+裁切更新后，到自由拼图中点击“刷新图源”，保留原排版并更新图片。导出后在 PowerPoint 中做最终检查。
 
-## 形态要点
+完整流程适用于生物医学原创研究，也可单独切图、拼图或校验。产物以 Markdown、JSON、图片和 PPTX 保存在论文目录中，可继续编辑。
 
-- **文件即真相**：一切产物是项目文件夹里的普通文件（`jc.md` / `figures.json` / `analysis.md` / `outline.md` / `slides.md` / 图片），dsh 右侧栏 markdown 预览自动刷新，无私有存储。
-- **右侧栏工作台 + 聊天轻卡片**：图源核对的富交互（框叠加、调框、裁切预览）在固定的右侧栏工作台；聊天卡片只做流程推进与确认入口。
-- **自由拼图**：编辑区随图片扩展、按图片外缘导出，不限制比例与图片数量；拖动、等比缩放、撤销和保存；自动排版仅提供建议。手动页面与工具共用布局及 PNG 导出，见 [使用设计](docs/product/自由拼图.md)。
-- **agent 信任与自由度**：不自建审批流——agent 修改产物文件与编辑代码同等地位，diff 聊天可见；图源写入统一经 `update_figures`（乐观锁，防并发覆盖）。
-- **工具原子化**：5 个原子工具（渲染 / 裁切 / 拼图 / 图源写入 / 校验），零相互耦合、以文件为接口，可单独调用；四步流程只是 skill 编排的默认剧本。
-- **复用优先**：SmartJC 的提示词、图组布局算法、叙事规则、workflow 蓝本按清单搬运（架构 §1.3），不重新开发。
-- **依赖极简**：纯 Node（pdfjs-dist / @napi-rs/canvas / sharp / zod / yaml / yauzl），MinerU API runner 随包提供；预览与 PPTX 生成用 dsh 生态现成能力（documentpreview / office-to-pdf / dsh-ppt-maker）。
+## 文档
 
-## 文档导航
+- [产品设计](docs/product/产品设计.md)：使用流程、确认点与工作台交互。
+- [架构设计](docs/architecture/架构设计.md)：工具与文件契约、API、开发和发布。
+- [数据与安全](SECURITY.md)：论文上传、模型处理和敏感信息边界。
 
-| 文档 | 内容 |
-|---|---|
-| [docs 索引](docs/README.md) | 文档地图、阅读顺序、术语速查 |
-| [产品设计](docs/product/产品设计.md) | 定位、闭环、形态、分步设计、边界 |
-| [图源核对](docs/product/图源核对.md) | 唯一富交互组件的交互细化 |
-| [slides 格式](docs/product/slides格式.md) | slides.md 契约与 PPTX 对接路径 |
-| [对话入口](docs/product/对话入口.md) | 触发分流、恢复、jc.md 状态文件 |
-| [架构设计](docs/architecture/架构设计.md) | 选型、包结构、工具契约、数据契约、M1–M6 计划 |
-| [决策记录](docs/decisions.md) | 关键决策、理由与被否方案 |
+## 许可与致谢
 
-## 路线图
-
-| 阶段 | 内容 |
-|---|---|
-| M1 | 渲染底座（插件骨架、pdf 封装、render_pages / crop、MinerU CLI 实测） |
-| M2 | 切分剧本与契约（figures.json、agent 视觉切分、update_figures、validate） |
-| M3 | skill 与文件链（全剧本、analysis/outline/slides 生成、确认点与恢复） |
-| M4 | 核对工作台（右侧栏 UI） |
-| M5 | 拼图与渲染（compose_panels + groups.json、PPTX 编排） |
-| M6 | 打磨与端到端验收 |
-
-## 致谢
-
-- **SmartJC**（本地参考项目，见架构 §1.3 复用清单）——产品闭环、叙事规则与大量可复用实现的来源。
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)——运行平台。
-- [MinerU](https://github.com/opendatalab/MinerU) / [mineru-open-api](https://github.com/opendatalab/MinerU-Ecosystem)——PDF 解析。
-- [dsh-ppt-maker](https://github.com/OMSociety/dsh-ppt-maker)——PPTX 渲染生态路径。
+软件和原创文档采用 [MIT 协议](LICENSE)，第三方论文与图像保留原许可。感谢 DeepSeek Harness、[MinerU](https://github.com/opendatalab/MinerU)、dsh-ppt-maker。

@@ -5,9 +5,9 @@ import { PdfFile } from '../src/pdf/pdf.ts'
 import { mineruBBoxToPt, parseContentList } from '../src/pdf/mineru.ts'
 import { FIXTURES, fixturePath } from './fixtures.ts'
 
-const CONTENT_LIST = join(import.meta.dirname, 'fixtures', 'parse', '2605.13902.content-list.json')
+const CONTENT_LIST = join(import.meta.dirname, 'fixtures', 'parse', 'mineru-geometry.json')
 
-describe('MinerU content-list 适配（真实解析产物回归）', () => {
+describe('MinerU content-list 适配（真实坐标与合成文本回归）', () => {
   it('解析 content-list：block 数组、类型分布与图块字段齐全', async () => {
     const blocks = parseContentList(await readFile(CONTENT_LIST, 'utf8'))
     expect(blocks.length).toBeGreaterThan(100)
