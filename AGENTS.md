@@ -12,7 +12,7 @@
 ## 文档权威（先读再动）
 
 1. 入口：[docs/README.md](docs/README.md)（文档地图与阅读顺序）。
-2. 产品行为以 [产品设计](docs/product/产品设计.md) 及三份细化文档为准；技术结构与实施顺序以 [架构设计](docs/architecture/架构设计.md)（v3.1）为准；关键取舍的背景见 [决策记录](docs/decisions.md)。
+2. 产品行为以 [产品设计](docs/product/产品设计.md) 及三份细化文档为准；技术结构与实施顺序以 [架构设计](docs/architecture/架构设计.md)（v3.2）为准；关键取舍的背景见 [决策记录](docs/decisions.md)。
 3. 文档间引用使用仓库相对路径；不写入本机盘符（SmartJC 源码路径 `E:\project\SmartJC` 仅在架构 §1.3 作为复用来源出现，属例外）。
 4. 修改行为或契约时，同步更新所有受影响文档；新增设计先核对是否已有权威位置。
 

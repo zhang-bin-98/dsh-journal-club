@@ -61,7 +61,7 @@ docs/
 | figures.json | 图源契约：documents / figures / regions / panels（bbox 用 PDF pt）；写入只经 update_figures |
 | update_figures | figures.json 唯一写入通道：json-patch + base-rev 乐观锁 + 滚动快照 |
 | whole-Panel | 无 Panel 单图的归一化表示（label 为空、bbox=整图） |
-| MinerU / mineru-open-api | PDF 解析服务及其官方 CLI；高精度模式需 token，flash 免费受限 |
+| MinerU / mineru-open-api | PDF 解析服务；随包 Node API runner，高精度需 token，flash 免费受限 |
 | content-list | MinerU 结构化输出（每块带 type/page/bbox），整图定位与 evidence 底料 |
 | slides.md | 幻灯片内容契约：frontmatter + `---` 分页 + 页头注释 + 讲稿引用块；PPTX 的唯一内容源 |
 | PPTD | dsh 生态 PPT 中间契约（YAML 工程，dsh-ppt-maker 使用）；slides.md 的派生物，单向不回写 |

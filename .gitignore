@@ -5,6 +5,9 @@
 /docs/verification/
 /.playwright-cli/
 
+# 本地论文样例与解析缓存（已跟踪的最小回归基线保留）
+/tests/fixtures/
+
 # Node
 node_modules/
 dist/
